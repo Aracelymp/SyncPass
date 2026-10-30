@@ -1,0 +1,282 @@
+.attendance-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.attendance-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+}
+
+.attendance-main,
+.attendance-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.filters-card {
+  padding: 0;
+}
+
+.filters-container {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  align-items: center;
+}
+
+.filter-group {
+  flex: 1;
+}
+
+.filter-select {
+  flex: 0 0 250px;
+}
+
+.event-select {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-input);
+  font-size: 0.9rem;
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.event-select:focus {
+  outline: none;
+  border-color: var(--color-secondary);
+}
+
+.participants-table-container {
+  overflow-x: auto;
+}
+
+.participants-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.participants-table thead {
+  background-color: var(--color-background);
+  border-bottom: 2px solid var(--color-border);
+}
+
+.participants-table th {
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-primary-dark);
+  font-size: 0.875rem;
+}
+
+.participants-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.875rem;
+}
+
+.participants-table tbody tr:hover {
+  background-color: var(--color-background);
+}
+
+.participant-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.participant-name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.participant-email {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+}
+
+.event-cell {
+  color: var(--color-secondary);
+  font-weight: 500;
+}
+
+.center-cell {
+  text-align: center;
+}
+
+.badge {
+  padding: 0.25rem 0.625rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-yes {
+  background-color: rgba(40, 167, 69, 0.15);
+  color: #28a745;
+}
+
+.badge-no {
+  background-color: rgba(111, 101, 116, 0.15);
+  color: var(--color-text-muted);
+}
+
+.status-badge {
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-attended {
+  background-color: rgba(40, 167, 69, 0.15);
+  color: #28a745;
+}
+
+.status-pending {
+  background-color: rgba(255, 193, 7, 0.2);
+  color: #856404;
+}
+
+.side-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.side-note {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+
+.side-note code {
+  font-size: 0.78rem;
+  background-color: var(--color-background);
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+}
+
+.summary-note {
+  margin-top: 0.75rem;
+  font-style: italic;
+}
+
+.event-context {
+  font-size: 0.85rem;
+  color: var(--color-secondary);
+  font-weight: 500;
+  margin-bottom: 0.75rem;
+}
+
+.you-tag {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-secondary);
+}
+
+.empty-row {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: 2rem 0.75rem;
+}
+
+.no-selection {
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 2rem;
+  font-style: italic;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-input);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.banner-error {
+  background-color: rgba(220, 53, 69, 0.1);
+  border: 1px solid rgba(220, 53, 69, 0.35);
+  color: #b02a37;
+}
+
+.banner-success {
+  background-color: rgba(25, 135, 84, 0.1);
+  border: 1px solid rgba(25, 135, 84, 0.35);
+  color: #146c43;
+}
+
+.banner-warning {
+  background-color: rgba(255, 193, 7, 0.15);
+  border: 1px solid rgba(255, 193, 7, 0.5);
+  color: #856404;
+}
+
+.summary-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background-color: var(--color-background);
+  border-radius: var(--radius-button);
+}
+
+.summary-label {
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.summary-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+}
+
+.attended-count {
+  color: #28a745;
+}
+
+.pending-count {
+  color: #856404;
+}
+
+@media (max-width: 968px) {
+  .attendance-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .filters-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-select {
+    flex: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .participants-table th,
+  .participants-table td {
+    padding: 0.5rem;
+    font-size: 0.8rem;
+  }
+}
