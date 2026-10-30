@@ -1,0 +1,24 @@
+:root {
+  /* Paleta corporativa SyncPass */
+  --color-primary-dark: #271539;
+  --color-primary: #501F5A;
+  --color-secondary: #915BA4;
+  --color-accent: #C2649B;
+  --color-accent-light: #E783B5;
+
+  /* Colores base */
+  --color-background: #FAF7FA;
+  --color-surface: #FFFFFF;
+  --color-text: #271539;
+  --color-text-muted: #6F6574;
+  --color-border: #E8DFE9;
+
+  /* Bordes y radios */
+  --radius-card: 12px;
+  --radius-button: 8px;
+  --radius-input: 8px;
+
+  /* Sombras */
+  --shadow-card: 0 2px 8px rgba(39, 21, 57, 0.08);
+  --shadow-hover: 0 4px 12px rgba(80, 31, 90, 0.12);
+}

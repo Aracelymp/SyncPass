@@ -1,0 +1,319 @@
+.reports-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.25rem;
+}
+
+.stat-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+.stat-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.5rem;
+}
+
+.stat-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.stat-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  line-height: 1.2;
+}
+
+.stat-title {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.stat-trend {
+  font-size: 0.75rem;
+  color: var(--color-secondary);
+}
+
+.reports-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.reports-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1.5rem;
+}
+
+.project-stats-table {
+  overflow-x: auto;
+}
+
+.project-stats-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.project-stats-table thead {
+  background-color: var(--color-background);
+  border-bottom: 2px solid var(--color-border);
+}
+
+.project-stats-table th {
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-primary-dark);
+  font-size: 0.875rem;
+}
+
+.project-stats-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.875rem;
+}
+
+.project-stats-table tbody tr:hover {
+  background-color: var(--color-background);
+}
+
+.project-name-cell {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.center-cell {
+  text-align: center;
+}
+
+.attendance-percent {
+  padding: 0.375rem 0.75rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+
+.attendance-percent.high {
+  background-color: rgba(40, 167, 69, 0.15);
+  color: #28a745;
+}
+
+.attendance-percent.medium {
+  background-color: rgba(255, 193, 7, 0.2);
+  color: #856404;
+}
+
+.attendance-percent.low {
+  background-color: rgba(220, 53, 69, 0.15);
+  color: #dc3545;
+}
+
+.satisfaction-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.satisfaction-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.satisfaction-bar-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.satisfaction-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.satisfaction-label {
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.satisfaction-percentage {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary-dark);
+}
+
+.satisfaction-bar-bg {
+  height: 10px;
+  background-color: var(--color-border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.satisfaction-bar {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.bar-primary {
+  background: linear-gradient(90deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+}
+
+.bar-secondary {
+  background: linear-gradient(90deg, var(--color-secondary) 0%, var(--color-accent) 100%);
+}
+
+.bar-muted {
+  background-color: var(--color-text-muted);
+}
+
+.satisfaction-summary {
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--color-border);
+  text-align: center;
+}
+
+.satisfaction-average {
+  color: var(--color-primary-dark);
+  font-size: 0.95rem;
+  margin-bottom: 0.375rem;
+}
+
+.satisfaction-note {
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+.impact-indicators {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.impact-item {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1rem;
+  background-color: var(--color-background);
+  border-radius: var(--radius-card);
+  border-left: 3px solid var(--color-accent);
+}
+
+.impact-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.impact-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.impact-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+}
+
+.impact-label {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.impact-disclaimer {
+  color: var(--color-accent);
+  font-size: 0.75rem;
+  font-style: italic;
+  text-align: center;
+}
+
+.project-cell {
+  color: var(--color-text-muted);
+}
+
+.empty-row {
+  text-align: center;
+  color: var(--color-text-muted);
+  font-style: italic;
+  padding: 2rem 0.75rem;
+}
+
+.no-selection {
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 2rem;
+  font-style: italic;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-input);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.banner-error {
+  background-color: rgba(220, 53, 69, 0.1);
+  border: 1px solid rgba(220, 53, 69, 0.35);
+  color: #b02a37;
+}
+
+.banner-info {
+  background-color: rgba(145, 91, 164, 0.1);
+  border: 1px solid rgba(145, 91, 164, 0.35);
+  color: var(--color-primary-dark);
+}
+
+@media (max-width: 968px) {
+  .reports-row {
+    grid-template-columns: 1fr;
+  }
+
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .impact-indicators {
+    grid-template-columns: 1fr;
+  }
+
+  .project-stats-table th,
+  .project-stats-table td {
+    padding: 0.5rem;
+    font-size: 0.8rem;
+  }
+}
