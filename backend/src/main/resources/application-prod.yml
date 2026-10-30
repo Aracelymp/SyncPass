@@ -1,0 +1,45 @@
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+
+spring:
+  datasource:
+    url: ${H2_FILE_URL:jdbc:h2:file:/opt/syncpass/data/syncpass;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE}
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  h2:
+    console:
+      enabled: false
+
+app:
+  jwt:
+    # JWT_SECRET es obligatorio en produccion.
+    # Debe tener al menos 32 bytes (256 bits); se recomiendan 64 caracteres aleatorios.
+    secret: ${JWT_SECRET}
+    expiration-ms: ${JWT_EXPIRATION_MS:604800000}
+  cors:
+    # Origenes permitidos separados por comas. No usar * en produccion.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+  seed-demo-data: false
+  cognito:
+    issuer: ${COGNITO_ISSUER}
+    client-id: ${COGNITO_CLIENT_ID}
+    region: ${COGNITO_REGION}
+    jwks-uri: ${COGNITO_JWKS_URI}
+
+logging:
+  level:
+    org.hibernate.SQL: warn
+    com.rojas.syncpass: info

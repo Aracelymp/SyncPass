@@ -1,0 +1,25 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+**/syncpass.env
+
+# Android / Gradle
+.gradle/
+**/.gradle/
+build/
+**/build/
+local.properties
+**/local.properties
+.idea/
+**/.idea/
+*.iml
+*.hprof
+.cxx/
+.DS_Store
+
+# Backend data and generated files
+backend/data/
+backend/*.log
