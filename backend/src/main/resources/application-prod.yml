@@ -5,23 +5,23 @@ server:
 
 spring:
   datasource:
-    url: ${H2_FILE_URL:jdbc:h2:file:/opt/syncpass/data/syncpass;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE}
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
+    url: ${DATABASE_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      # validate: solo comprueba que el schema de PostgreSQL coincida con las entidades.
+      # Para la creacion inicial del schema usar un script SQL o Flyway, NO update.
+      ddl-auto: validate
     open-in-view: false
     properties:
       hibernate:
         format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
   jackson:
     serialization:
       write-dates-as-timestamps: false
-  h2:
-    console:
-      enabled: false
 
 app:
   jwt:
@@ -35,7 +35,7 @@ app:
   seed-demo-data: false
   cognito:
     issuer: ${COGNITO_ISSUER}
-    client-id: ${COGNITO_CLIENT_ID}
+    client-ids: ${COGNITO_CLIENT_IDS}
     region: ${COGNITO_REGION}
     jwks-uri: ${COGNITO_JWKS_URI}
 

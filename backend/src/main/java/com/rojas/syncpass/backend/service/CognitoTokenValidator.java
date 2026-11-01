@@ -11,6 +11,8 @@ import com.nimbusds.jose.util.DefaultResourceRetriever;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
 import com.nimbusds.jwt.proc.DefaultJWTProcessor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,23 +20,40 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URL;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class CognitoTokenValidator {
 
+    private static final Logger logger =
+            LoggerFactory.getLogger(CognitoTokenValidator.class);
+
+    private static final long CLOCK_SKEW_SECONDS = 60;
+
     private final String issuer;
-    private final String clientId;
+    private final Set<String> clientIds;
     private final ConfigurableJWTProcessor<SecurityContext> jwtProcessor;
 
     public CognitoTokenValidator(
             @Value("${app.cognito.issuer}") String issuer,
-            @Value("${app.cognito.client-id}") String clientId,
+            @Value("${app.cognito.client-ids}") String clientIdsValue,
             @Value("${app.cognito.jwks-uri}") String jwksUri
     ) {
         this.issuer = issuer;
-        this.clientId = clientId;
+
+        this.clientIds = Arrays.stream(clientIdsValue.split(","))
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
+
+        if (this.clientIds.isEmpty()) {
+            throw new IllegalStateException(
+                    "Debe configurarse al menos un App Client ID de Cognito"
+            );
+        }
 
         try {
             DefaultResourceRetriever retriever =
@@ -78,114 +97,115 @@ public class CognitoTokenValidator {
         try {
             JWTClaimsSet claims = jwtProcessor.process(token, null);
 
+            Instant now = Instant.now();
+
             // 1. Validar ISSUER
             String iss = claims.getIssuer();
 
             if (iss == null || !iss.equals(issuer)) {
-                System.err.println(
-                        "FALLO ISSUER: recibido=" + iss
-                                + " esperado=" + issuer
-                );
-
                 throw new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
-                        "Token Cognito inválido"
+                        "Emisor del token Cognito no autorizado"
                 );
             }
 
-            // 2. Validar expiración
+            // 2. Validar EXPIRACIÓN
             Date exp = claims.getExpirationTime();
 
-            if (exp == null || exp.toInstant().isBefore(Instant.now())) {
-                System.err.println("FALLO EXPIRATION: token expirado o sin fecha");
-
+            if (exp == null || !exp.toInstant().isAfter(now)) {
                 throw new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
                         "Token Cognito expirado"
                 );
             }
 
-            // 3. Validar tipo de token
+            // 3. Validar FECHA DE EMISIÓN
+            Date iat = claims.getIssueTime();
+
+            if (iat == null ||
+                    iat.toInstant().isAfter(now.plusSeconds(CLOCK_SKEW_SECONDS))) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED,
+                        "Fecha de emisión del token Cognito inválida"
+                );
+            }
+
+            // 4. Validar FECHA DE INICIO, si está presente
+            Date nbf = claims.getNotBeforeTime();
+
+            if (nbf != null &&
+                    nbf.toInstant().isAfter(now.plusSeconds(CLOCK_SKEW_SECONDS))) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNAUTHORIZED,
+                        "El token Cognito todavía no es válido"
+                );
+            }
+
+            // 5. Validar TIPO DE TOKEN
             String tokenUse = claims.getStringClaim("token_use");
 
             if (tokenUse == null ||
                     (!tokenUse.equals("id") && !tokenUse.equals("access"))) {
-
-                System.err.println("FALLO TOKEN_USE: " + tokenUse);
-
                 throw new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
-                        "Token Cognito inválido"
+                        "Tipo de token Cognito inválido"
                 );
             }
 
-            // 4. Validar CLIENT ID o AUDIENCE
-            String clientIdClaim = claims.getStringClaim("client_id");
+            // 6. Validar CLIENTE según el tipo de token
+            if ("id".equals(tokenUse)) {
 
-            if (clientIdClaim == null) {
-
-                List<String> aud = claims.getAudience();
-
-                if (aud == null || aud.isEmpty() || !aud.contains(clientId)) {
-                    System.err.println(
-                            "FALLO AUDIENCE: recibido=" + aud
-                                    + " esperado=" + clientId
-                    );
-
+                // Los ID Tokens identifican al cliente mediante aud.
+                if (claims.getAudience() == null ||
+                        claims.getAudience().stream()
+                                .noneMatch(clientIds::contains)) {
                     throw new ResponseStatusException(
                             HttpStatus.UNAUTHORIZED,
-                            "Token Cognito inválido"
+                            "Audience del token Cognito no autorizado"
                     );
                 }
 
-            } else if (!clientIdClaim.equals(clientId)) {
+            } else {
 
-                System.err.println(
-                        "FALLO CLIENT_ID: recibido=" + clientIdClaim
-                                + " esperado=" + clientId
-                );
+                // Los Access Tokens identifican al cliente mediante client_id.
+                String clientIdClaim = claims.getStringClaim("client_id");
 
-                throw new ResponseStatusException(
-                        HttpStatus.UNAUTHORIZED,
-                        "Token Cognito inválido"
-                );
+                if (clientIdClaim == null ||
+                        !clientIds.contains(clientIdClaim)) {
+                    throw new ResponseStatusException(
+                            HttpStatus.UNAUTHORIZED,
+                            "Client ID del token Cognito no autorizado"
+                    );
+                }
             }
 
-            // 5. Validar identificador del usuario
+            // 7. Validar IDENTIFICADOR DEL USUARIO
             String sub = claims.getSubject();
 
             if (sub == null || sub.isBlank()) {
-                System.err.println("FALLO SUB: identificador de usuario ausente");
-
                 throw new ResponseStatusException(
                         HttpStatus.UNAUTHORIZED,
-                        "Token Cognito inválido"
+                        "Identificador de usuario Cognito ausente"
                 );
             }
 
-            System.out.println(
-                    "COGNITO VALIDATION SUCCESS: usuario validado correctamente"
-            );
+            logger.info("Token Cognito validado correctamente");
 
             return claims;
 
         } catch (ResponseStatusException ex) {
 
-            System.err.println(
-                    "COGNITO VALIDATION: " + ex.getReason()
-            );
+            logger.warn("Validación Cognito rechazada: {}", ex.getReason());
 
             throw ex;
 
         } catch (Exception ex) {
 
-            System.err.println(
-                    "COGNITO EXCEPTION: "
-                            + ex.getClass().getName()
-                            + " - " + ex.getMessage()
+            logger.error(
+                    "Error al validar el token Cognito: {}",
+                    ex.getMessage(),
+                    ex
             );
-
-            ex.printStackTrace();
 
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED,

@@ -28,16 +28,19 @@ spring:
 
 app:
   jwt:
-    secret: ${JWT_SECRET:syncpass-development-secret-change-in-production-2026-0123456789}
+    # JWT_SECRET es obligatorio. En desarrollo puede exportarse como variable de entorno.
+    # Ejemplo: export JWT_SECRET=$(openssl rand -base64 64)
+    secret: ${JWT_SECRET}
     expiration-ms: ${JWT_EXPIRATION_MS:604800000}
   cors:
+    # En desarrollo se permite cualquier origen. En produccion restringir al dominio real.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
   seed-demo-data: ${SEED_DEMO_DATA:true}
   cognito:
     issuer: ${COGNITO_ISSUER:https://cognito-idp.us-east-1.amazonaws.com/us-east-1_eyoBw6XGI}
-    client-id: ${COGNITO_CLIENT_ID:33tgu296dc5itbh3te23rndi2q}
+    client-ids: ${COGNITO_CLIENT_IDS:33tgu296dc5itbh3te23rndi2q,36tb2beisuo9gd5o3bekt3e7ac}
     region: ${COGNITO_REGION:us-east-1}
-    jwks-uri: ${COGNITO_JWKS_URI:https://cognito-idp.us-east-1.amazonaws.com/us-east-1_eyoBw6XGI/.well-known/jwks.json}
+    jwks-uri: ${COGNITO_JWKS_URI:https://cognito-idp.us-east-1.amazonaws.com/us-east-1_eyoBw6XGI/.wellknown/jwks.json}
 
 logging:
   level:
