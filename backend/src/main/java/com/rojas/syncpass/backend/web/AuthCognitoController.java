@@ -1,3 +1,4 @@
+
 package com.rojas.syncpass.backend.web;
 
 import com.rojas.syncpass.backend.config.CustomUserDetailsService;
@@ -9,7 +10,6 @@ import com.rojas.syncpass.backend.repo.UserRepository;
 import com.rojas.syncpass.backend.service.CognitoTokenValidator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
@@ -39,39 +39,86 @@ public class AuthCognitoController {
     }
 
     public record CognitoExchangeRequest(
-            @NotBlank(message = "El token Cognito es obligatorio") String idToken,
+            String idToken,
             String accessToken
     ) {
     }
 
     @PostMapping("/cognito/exchange")
-    public ApiDtos.LoginResponse exchange(@Valid @RequestBody CognitoExchangeRequest request) {
-        String token = request.idToken();
-        if (token == null || token.isBlank()) {
-            token = request.accessToken();
+    public ApiDtos.LoginResponse exchange(
+            @Valid @RequestBody CognitoExchangeRequest request
+    ) {
+
+        boolean hasIdToken =
+                request.idToken() != null && !request.idToken().isBlank();
+
+        boolean hasAccessToken =
+                request.accessToken() != null && !request.accessToken().isBlank();
+
+        if (hasIdToken == hasAccessToken) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Debe enviar exactamente un token Cognito"
+            );
         }
-        if (token == null || token.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token Cognito requerido");
-        }
+
+        String token = hasIdToken
+                ? request.idToken()
+                : request.accessToken();
+
         JWTClaimsSet claims = cognitoTokenValidator.validate(token);
+
         String sub = claims.getSubject();
+
         if (sub == null || sub.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token Cognito inválido");
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Token Cognito inválido"
+            );
         }
+
         var link = userCognitoLinkRepository.findByCognitoSub(sub)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Identidad Cognito no vinculada"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Identidad Cognito no vinculada"
+                ));
+
         User user = userRepository.findById(link.getUser().getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Usuario no autorizado"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.FORBIDDEN,
+                        "Usuario no autorizado"
+                ));
+
         if (!user.isActive()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Usuario no autorizado");
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Usuario no autorizado"
+            );
         }
+
         userDetailsService.loadUserByUsername(user.getUsername());
-        String accessToken = jwtService.generateToken(user.getUsername(), user.getId(), user.getRole().name());
-        return new ApiDtos.LoginResponse(accessToken, "Bearer", jwtService.getExpirationSeconds(), toDto(user));
+
+        String accessToken = jwtService.generateToken(
+                user.getUsername(),
+                user.getId(),
+                user.getRole().name()
+        );
+
+        return new ApiDtos.LoginResponse(
+                accessToken,
+                "Bearer",
+                jwtService.getExpirationSeconds(),
+                toDto(user)
+        );
     }
 
     private ApiDtos.UserDto toDto(User user) {
-        return new ApiDtos.UserDto(user.getId(), user.getUsername(), user.getEmail(),
-                user.getFullName(), user.getRole());
+        return new ApiDtos.UserDto(
+                user.getId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getFullName(),
+                user.getRole()
+        );
     }
 }

@@ -19,6 +19,20 @@ val apiBaseUrl: String =
         ?: System.getenv("API_BASE_URL")?.takeIf { it.isNotBlank() }
         ?: "http://192.168.1.6:8080/"
 
+// Prioridad: -PcognitoClientId > .env > variable de entorno > placeholder.
+val cognitoClientId: String =
+    (findProperty("cognitoClientId") as String?)?.takeIf { it.isNotBlank() }
+        ?: envProps.getProperty("COGNITO_CLIENT_ID")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("COGNITO_CLIENT_ID")?.takeIf { it.isNotBlank() }
+        ?: "<APP_CLIENT_ID>"
+
+// Prioridad: -PcognitoUserPoolDomain > .env > variable de entorno > placeholder.
+val cognitoUserPoolDomain: String =
+    (findProperty("cognitoUserPoolDomain") as String?)?.takeIf { it.isNotBlank() }
+        ?: envProps.getProperty("COGNITO_USER_POOL_DOMAIN")?.takeIf { it.isNotBlank() }
+        ?: System.getenv("COGNITO_USER_POOL_DOMAIN")?.takeIf { it.isNotBlank() }
+        ?: "https://<USER_POOL_DOMAIN>.auth.us-east-1.amazoncognito.com"
+
 android {
     namespace = "com.rojas.syncpass"
     compileSdk {
@@ -34,6 +48,8 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+        buildConfigField("String", "COGNITO_CLIENT_ID", "\"$cognitoClientId\"")
+        buildConfigField("String", "COGNITO_USER_POOL_DOMAIN", "\"$cognitoUserPoolDomain\"")
         manifestPlaceholders["appAuthRedirectScheme"] = "com.rojas.syncpass"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

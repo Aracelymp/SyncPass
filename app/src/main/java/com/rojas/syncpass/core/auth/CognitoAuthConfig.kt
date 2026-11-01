@@ -2,6 +2,7 @@ package com.rojas.syncpass.core.auth
 
 import android.content.Context
 import android.net.Uri
+import com.rojas.syncpass.BuildConfig
 import net.openid.appauth.AuthorizationRequest
 import net.openid.appauth.AuthorizationService
 import net.openid.appauth.AuthorizationServiceConfiguration
@@ -9,8 +10,8 @@ import net.openid.appauth.ResponseTypeValues
 
 object CognitoAuthConfig {
     const val AWS_REGION = "us-east-1"
-    const val USER_POOL_DOMAIN = "https://us-east-1eyobw6xgi.auth.us-east-1.amazoncognito.com"
-    const val CLIENT_ID = "33tgu296dc5itbh3te23rndi2q"
+    val USER_POOL_DOMAIN = BuildConfig.COGNITO_USER_POOL_DOMAIN
+    val CLIENT_ID = BuildConfig.COGNITO_CLIENT_ID
     const val REDIRECT_URI = "com.rojas.syncpass://callback"
     const val SCOPES = "openid email"
 

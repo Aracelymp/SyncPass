@@ -65,7 +65,7 @@ class CognitoExchangeControllerTest {
 
     private String buildFakeToken(String sub, String tokenUse) {
         String header = "eyJhbGciOiJSUzI1NiIsImtpZCI6InRlc3QifQ";
-        String payloadJson = String.format("{\"iss\":\"https://cognito-idp.us-east-1.amazonaws.com/us-east-1_eyoBw6XGI\",\"sub\":\"%s\",\"token_use\":\"%s\",\"client_id\":\"36tb2beisuo9gd5o3bekt3e7ac\",\"exp\":%d}", sub, tokenUse, System.currentTimeMillis() / 1000 + 3600);
+        String payloadJson = String.format("{\"iss\":\"https://cognito-idp.us-east-1.amazonaws.com/us-east-1_test\",\"sub\":\"%s\",\"token_use\":\"%s\",\"client_id\":\"test-client-id\",\"exp\":%d}", sub, tokenUse, System.currentTimeMillis() / 1000 + 3600);
         String payload = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(payloadJson.getBytes());
         return header + "." + payload + ".sig";
     }

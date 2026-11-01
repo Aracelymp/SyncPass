@@ -11,3 +11,8 @@ app:
   seed-demo-data: true
   jwt:
     secret: syncpass-test-secret-with-at-least-thirty-two-bytes-2026
+    cognito:
+    issuer: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_test
+    client-ids: test-client-id
+    region: us-east-1
+    jwks-uri: ${COGNITO_JWKS_URI:https://cognito-idp.us-east-1.amazonaws.com/us-east-1_eyoBw6XGI/.well-known/jwks.json}

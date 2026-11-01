@@ -3,3 +3,11 @@ data/
 .gradle/
 *.log
 .env
+.env.*
+*.env
+local.properties
+.idea/
+*.iml
+*.db
+*.mv.db
+*.trace.db
