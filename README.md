@@ -1,48 +1,51 @@
 # SyncPass
 
-Aplicación Android nativa para gestión de proyectos comunitarios, eventos, inscripciones, asistencia por QR, registros sin inscripción previa, encuestas de satisfacción y reportes de impacto.
+Aplicación Android nativa y cliente web para la gestión de proyectos comunitarios, eventos, inscripciones, asistencia por QR, registros sin inscripción previa (walk-in), encuestas de satisfacción y reportes de impacto.
 
-El repositorio contiene dos módulos independientes:
+El repositorio contiene tres módulos:
 
 - `app/`: aplicación Android (Kotlin, Jetpack Compose, Material 3, MVVM, Room, WorkManager, Retrofit).
-- `backend/`: API REST real (Spring Boot 3, Java 21, JPA, H2, JWT, BCrypt).
+- `backend/`: API REST (Spring Boot 3, Java 21, JPA, Spring Security, JWT, BCrypt).
+- `src/`: aplicación web (React 19, TypeScript, Vite, React Router, AWS Amplify v6).
+
+La arquitectura completa y actualizada se encuentra en `ARQUITECTURA_COMPLETA_SYNCPASS.md`.
 
 ## Funcionalidades implementadas
 
-- Inicio de sesión en línea contra el backend y modo local sin conexión para cuentas ya usadas en el dispositivo.
+- Autenticación con AWS Cognito en Android y web.
+- Intercambio del token Cognito por un JWT propio de SyncPass (`POST /api/auth/cognito/exchange`).
 - Roles diferenciados:
-  - `DOCENTE_COORDINADOR`: crea proyectos y eventos, registra asistentes sin inscripción, consulta participantes, encuestas, comentarios y reportes.
-  - `ESTUDIANTE_VOLUNTARIO_MONITOR`: consulta proyectos/eventos, se inscribe, cancela inscripción, escanea QR, registra walk-ins y aplica encuestas asistidas únicamente a las asistencias que él mismo registró o escaneó. No puede crear proyectos/eventos, consultar respuestas ni acceder a reportes.
+  - `DOCENTE_COORDINADOR`: crea proyectos y eventos, consulta participantes, encuestas, comentarios y reportes.
+  - `ESTUDIANTE_VOLUNTARIO_MONITOR`: consulta proyectos/eventos, se inscribe, escanea QR, registra walk-ins y aplica encuestas asistidas únicamente a las asistencias que él mismo registró o escaneó.
 - Listado de proyectos y eventos con filtros y búsqueda.
-- Detalle de proyecto con creación de eventos.
+- Detalle de proyecto con creación de eventos (coordinador).
 - Detalle de evento con inscripción, QR del evento, escaneo de asistencia y resumen de encuesta para coordinación.
 - Escáner QR con CameraX + ML Kit y captura manual del token como alternativa.
 - Registro de participantes no inscritos (walk-in) por coordinadores y monitores, con almacenamiento local y sincronización posterior.
-- Encuestas de satisfacción, organización e impacto. El monitor puede aplicarlas de forma asistida a las asistencias que registró o escaneó; el beneficiario no necesita cuenta.
+- Encuestas de satisfacción, organización e impacto. El monitor puede aplicarlas de forma asistida; el beneficiario no necesita cuenta.
 - Privacidad de encuestas: solo coordinación recibe respuestas, comentarios y resultados. El monitor conserva únicamente el estado de sincronización y un recibo sin contenido.
-- Reportes calculados localmente desde Room y pantalla exclusiva para coordinadores.
+- Reportes calculados desde el backend para coordinadores.
 - Caché local Room, bandeja de salida (outbox) y sincronización automática con WorkManager al recuperar conexión, al iniciar sesión y cada 15 minutos.
 - Migración Room aditiva de versión 1 a 2 para asistencias, encuestas y operaciones pendientes.
-- Tema centralizado con la paleta institucional `#271539`, `#501F5A`, `#915BA4`, `#C2649B`, `#E783B5` y degradados permitidos.
 
-## Cuentas de demostración
+## Tecnologías principales
 
-Todas usan la contraseña `Demo1234`.
-
-| Usuario | Rol |
-| --- | --- |
-| `coordinador` | Docente · Coordinador |
-| `monitor` | Estudiante · Monitor |
-| `estudiante` | Estudiante · Monitor |
-| `valentina` | Estudiante · Monitor |
-| `camilo` | Estudiante · Monitor |
-
-Los datos son ficticios y solo sirven para demostración.
+| Capa | Tecnología |
+|---|---|
+| Android | Kotlin, Jetpack Compose, Room, WorkManager, Retrofit, CameraX, ML Kit |
+| Backend | Java 21, Spring Boot 3, Spring Security, JWT HS256, JPA/Hibernate |
+| Web | React 19, TypeScript, Vite, React Router, AWS Amplify v6 |
+| BD producción | PostgreSQL (Supabase) |
+| BD desarrollo | H2 archivo |
+| Auth | AWS Cognito User Pool |
+| Frontend hosting | Vercel |
+| Backend hosting | AWS EC2 |
 
 ## Requisitos
 
 - JDK 21.
 - Android SDK con plataforma 37 y un emulador o dispositivo API 28 o superior.
+- Node.js 20+ para el frontend.
 - No se necesita instalar Gradle: se incluyen los wrappers.
 
 ## Backend
@@ -60,7 +63,9 @@ La API queda en `http://localhost:8080`. La salud se verifica con:
 Invoke-RestMethod http://localhost:8080/api/health
 ```
 
-La base H2 se guarda en `backend/data/syncpass` y conserva los datos entre ejecuciones. Para construir el jar:
+En desarrollo usa H2 archivo en `backend/data/syncpass`. En producción se conecta a PostgreSQL en Supabase mediante variables de entorno.
+
+Para construir el jar:
 
 ```powershell
 .\gradlew.bat bootJar
@@ -73,9 +78,9 @@ La base H2 se guarda en `backend/data/syncpass` y conserva los datos entre ejecu
 La URL se elige en este orden:
 
 1. `-PapiBaseUrl=...`
-2. Variable `API_BASE_URL` del archivo `.env`.
+2. Variable `API_BASE_URL` del archivo `.env` en la raíz del proyecto Gradle.
 3. Variable de entorno `API_BASE_URL`.
-4. Valor por defecto `http://10.0.2.2:8080/`.
+4. Valor por defecto `http://192.168.1.6:8080/`.
 
 Para un emulador con el backend en la misma máquina:
 
@@ -94,13 +99,32 @@ adb install -r "$env:SYNCPASS_BUILD_DIR\app\outputs\apk\debug\app-debug.apk"
 adb shell am start -n com.rojas.syncpass/.MainActivity
 ```
 
+## Aplicación Web
+
+Desde la raíz del proyecto:
+
+```powershell
+npm install
+npm run dev
+```
+
+El servidor de desarrollo queda en `http://localhost:5173`.
+
+Build de producción:
+
+```powershell
+npm run build
+```
+
+La web de producción está desplegada en Vercel. Vercel proxies las llamadas `/api/*` al backend en EC2.
+
 ## Comportamiento sin conexión
 
 - Las cuentas que ya iniciaron sesión pueden volver a entrar sin red usando la credencial local.
 - Los datos previamente descargados siguen visibles desde Room.
 - Las asistencias, walk-ins y encuestas se guardan en la outbox local.
 - Al recuperar la conexión se sincronizan automáticamente.
-- Una sesión iniciada sin conexión no puede sincronizar hasta volver a iniciar sesión con internet; esto evita reutilizar un token no validado. La pantalla de perfil lo indica.
+- La creación de proyectos y eventos requiere conexión.
 
 ## Pruebas
 
@@ -110,8 +134,6 @@ Pruebas unitarias Android:
 .\gradlew.bat :app:testDebugUnitTest
 ```
 
-Resultado verificado: 10 pruebas, 0 fallos (parseo de QR, token crudo, payload inválido, hash local, etiquetas de rol/estado y política de elegibilidad de encuestas asistidas por rol).
-
 Pruebas de integración del backend:
 
 ```powershell
@@ -119,17 +141,10 @@ cd backend
 .\gradlew.bat test
 ```
 
-Resultado verificado: 8 pruebas, 0 fallos (salud pública, login y lectura autenticada, prohibición de creación para monitor, rechazo de token ausente/inválido y contraseña incorrecta, walk-in para monitor, encuesta asistida con control de duplicados y privacidad del promedio de satisfacción por rol).
-
-Validación de migración Room (1 → 2): verificada con script manual contra `app/schemas` para las tablas `attendance`, `surveys` y `pending_operations` (columnas, índices y valores por defecto).
-
-También se ejecutó una verificación manual contra la API real y el emulador: login de ambos roles, listados y detalles, creación de proyecto y evento desde la app, inscripción, asistencia QR, walk-in, encuesta, reportes, sincronización, modo sin conexión, login local y reconexión.
-
-## Limitaciones conocidas y trabajo pendiente
+## Limitaciones conocidas
 
 - No hay pruebas instrumentadas de UI (Compose) ni pruebas end-to-end automatizadas del APK.
-- El escaneo con cámara se probó en el emulador solo hasta el flujo de permiso y la captura manual; falta validarlo con un dispositivo físico y un QR impreso.
-- El botón de compartir reportes abre el selector del sistema, pero no se verificó la vista previa en una app externa.
+- El escaneo con cámara se probó en el emulador; falta validarlo con un dispositivo físico y un QR impreso.
 - La sincronización es incremental por operaciones; no incluye resolución de conflictos avanzada ni paginación para catálogos grandes.
-- Las credenciales y el secreto JWT son de demostración. Antes de producción se deben externalizar, usar HTTPS, rotar secretos y firmar el APK con una clave de release.
-- No se incluye despliegue del backend ni configuración de base de datos PostgreSQL de producción.
+- Las credenciales demo solo sirven para desarrollo local; la autenticación de producción usa AWS Cognito.
+- La migración H2 → PostgreSQL está pausada; los datos de H2 y sus backups se conservan intactos.

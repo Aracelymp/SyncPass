@@ -1,20 +1,25 @@
-# ARQUITECTURA COMPLETA SYNCPASS
+# Arquitectura Técnica de SyncPass
 
-## 1. Introducción y objetivo
-
-SyncPass es un sistema fullstack para la gestión de proyectos comunitarios, eventos, inscripciones, asistencia mediante códigos QR, encuestas de satisfacción y reportes de impacto.
-
-Está compuesto por tres proyectos independientes pero interoperables:
-
-1. **Aplicación Android** (`C:\Users\milla\Documents\SyncPass\app`): cliente móvil nativo desarrollado en Kotlin con Jetpack Compose.
-2. **Backend** (`C:\Users\milla\Documents\SyncPass\backend`): API REST desarrollada en Java 21 con Spring Boot.
-3. **Aplicación Web** (`C:\Users\milla\OneDrive\Documents\SyncPass-Fullstack\frontend`): cliente web desarrollado en React + TypeScript + Vite.
-
-El presente documento describe la arquitectura real de los tres componentes, basada en la inspección del código fuente. Se indica explícitamente qué funcionalidades están implementadas y cuáles están preparadas pero no activas.
+> **Versión actualizada al estado real del proyecto.**  
+> Este documento describe cómo funciona SyncPass hoy, contrastado con el código fuente, la configuración de producción y las pruebas realizadas. No refleja aspiraciones ni diseños futuros no implementados.
 
 ---
 
-## 2. Arquitectura general de los tres componentes
+## 1. Introducción y alcance
+
+SyncPass es un sistema fullstack para la gestión de proyectos comunitarios, eventos, inscripciones, asistencia mediante códigos QR, registro de participantes no inscritos (walk-in), encuestas de satisfacción y reportes de impacto.
+
+Está compuesto por tres componentes interoperables:
+
+1. **Aplicación Android** (`app/`): cliente móvil nativo en Kotlin con Jetpack Compose.
+2. **Backend** (`backend/`): API REST en Java 21 con Spring Boot.
+3. **Aplicación Web** (`src/`): cliente web en React + TypeScript + Vite.
+
+La fuente de verdad es PostgreSQL en Supabase (producción). El backend también puede ejecutarse con H2 en modo archivo para desarrollo local. La migración H2 → PostgreSQL está preparada pero pausada.
+
+---
+
+## 2. Arquitectura general
 
 ```mermaid
 flowchart TB
@@ -24,38 +29,42 @@ flowchart TB
     end
 
     subgraph Red
-        A -->|HTTPS/HTTP + Bearer JWT| GW[API REST Spring Boot]
-        W -->|HTTPS/HTTP + Bearer JWT| GW
+        A -->|HTTPS + Bearer JWT| V[Vercel /api/*]
+        W -->|HTTPS + Bearer JWT| V
+        V -->|HTTP| EC2[Spring Boot en EC2]
     end
 
     subgraph Servidor
-        GW -->|Spring Data JPA| DB[(H2 archivo)]
-        GW -->|CognitoTokenValidator| COG[AWS Cognito]
+        EC2 -->|JDBC| DB[(PostgreSQL Supabase)]
+        EC2 -->|JWKS| COG[AWS Cognito]
     end
 
     subgraph Offline_Android
-        A -->|Room cache/outbox| R[(SQLite local)]
+        A -->|Room SQLite cache + outbox| L[(SQLite local)]
     end
+
+    W -->|Amplify Auth v6| COG
+    A -->|Cognito IDP API| COG
 ```
 
-- El backend es la fuente de verdad. Expone una API REST con autenticación JWT propia y soporte opcional para intercambio de tokens Cognito.
-- La app Android consume la API, guarda datos en Room para funcionar offline y sincroniza operaciones pendientes con WorkManager.
-- La app Web utiliza AWS Amplify v6 para autenticarse con Cognito, intercambia el idToken por un JWT propio del backend y consume la API REST en las páginas de negocio.
+- El backend en EC2 es la fuente de verdad. Expone API REST con JWT propio e intercambia tokens Cognito.
+- Vercel sirve el frontend y hace proxy de `/api/*` hacia EC2.
+- Android consume la API, guarda datos en Room y sincroniza operaciones pendientes con WorkManager.
+- La web usa AWS Amplify v6 para autenticarse con Cognito, intercambia el `idToken` por el JWT propio del backend y consume la API.
 
 ---
 
-## 3. Tecnologías y versiones utilizadas
+## 3. Tecnologías y versiones
 
 ### Android
 
-| Tecnología | Versión / Referencia |
+| Tecnología | Referencia |
 |---|---|
 | Android Gradle Plugin | 9.2.1 |
 | Kotlin | 2.4.21 |
 | KSP | 2.3.12 |
 | Compile SDK | 37 |
-| Min SDK | 28 |
-| Target SDK | 36 |
+| Min/Target SDK | 28 / 36 |
 | Jetpack Compose BOM | 2026.09.00 |
 | Room | 2.8.5 |
 | Retrofit | 3.0.0 |
@@ -63,28 +72,28 @@ flowchart TB
 | CameraX | 1.6.2 |
 | ML Kit Barcode | 17.3.0 |
 | ZXing Core | 3.5.4 |
-| AppAuth | 0.11.1 |
+| AppAuth | 0.11.1 (configurado, no es el flujo activo) |
 | WorkManager | 2.12.0 |
 | DataStore Preferences | 1.3.0 |
 | Coroutines | 1.11.0 |
 
 ### Backend
 
-| Tecnología | Versión / Referencia |
+| Tecnología | Referencia |
 |---|---|
 | Spring Boot | 3.5.16 |
 | Java | 21 |
 | Spring Data JPA | gestionado por BOM |
 | Spring Security | gestionado por BOM |
 | Spring Validation | gestionado por BOM |
-| Spring OAuth2 Resource Server | gestionado por BOM |
 | JJWT | 0.12.6 |
-| H2 Database | runtime |
+| PostgreSQL driver | en classpath para `application-prod.yml` |
+| H2 Database | modo archivo en desarrollo |
 | Lombok | 1.18.x |
 
 ### Web
 
-| Tecnología | Versión / Referencia |
+| Tecnología | Referencia |
 |---|---|
 | React | 19.3.1 |
 | React DOM | 19.3.1 |
@@ -96,319 +105,340 @@ flowchart TB
 
 ---
 
-## 4. Estructura de carpetas y paquetes de cada proyecto
+## 4. Estructura de carpetas
 
 ### Android
 
 ```
-C:\Users\milla\Documents\SyncPass\
-├── app\
-│   ├── src\main\java\com\rojas\syncpass\
-│   │   ├── MainActivity.kt
-│   │   ├── SyncPassApp.kt
-│   │   ├── core\
-│   │   │   ├── AppContainer.kt
-│   │   │   ├── auth\
-│   │   │   │   ├── CognitoAuthConfig.kt
-│   │   │   │   ├── CognitoAuthMessages.kt
-│   │   │   │   └── CognitoDirectAuthService.kt
-│   │   │   ├── config\AppConfig.kt
-│   │   │   ├── network\NetworkMonitor.kt
-│   │   │   └── util\
-│   │   │       ├── Qr.kt
-│   │   │       ├── Dates.kt
-│   │   │       └── Hash.kt
-│   │   ├── data\
-│   │   │   ├── local\
-│   │   │   │   ├── AppDatabase.kt
-│   │   │   │   ├── Daos.kt
-│   │   │   │   ├── DemoLocalSeeder.kt
-│   │   │   │   ├── Entities.kt
-│   │   │   │   └── Mappers.kt
-│   │   │   ├── remote\
-│   │   │   │   ├── AdminDtos.kt
-│   │   │   │   ├── ApiDtos.kt
-│   │   │   │   ├── ApiErrors.kt
-│   │   │   │   ├── AuthApiService.kt
-│   │   │   │   ├── AuthDtos.kt
-│   │   │   │   ├── CognitoExchangeRequest.kt
-│   │   │   │   ├── NetworkModule.kt
-│   │   │   │   ├── RetrofitClient.kt
-│   │   │   │   └── SyncPassApiService.kt
-│   │   │   ├── repository\
-│   │   │   │   ├── AuthRepository.kt
-│   │   │   │   ├── UserAdminRepository.kt
-│   │   │   │   ├── ProjectRepository.kt
-│   │   │   │   ├── EventRepository.kt
-│   │   │   │   ├── AttendanceRepository.kt
-│   │   │   │   ├── SurveyRepository.kt
-│   │   │   │   ├── SyncRepository.kt
-│   │   │   │   ├── SessionRepository.kt
-│   │   │   │   ├── DashboardRepository.kt
-│   │   │   │   └── ReportRepository.kt
-│   │   │   ├── session\
-│   │   │   │   ├── SessionManager.kt
-│   │   │   │   └── SessionState.kt
-│   │   │   └── sync\
-│   │   │       ├── SyncWorker.kt
-│   │   │       └── SyncScheduler.kt (embebido en SyncWorker.kt)
-│   │   └── ui\
-│   │       ├── AppRoot.kt
-│   │       ├── components\
-│   │       ├── login\
-│   │       ├── dashboard\
-│   │       ├── projects\
-│   │       ├── events\
-│   │       ├── scanner\
-│   │       ├── walkin\
-│   │       ├── survey\
-│   │       ├── reports\
-│   │       ├── users\
-│   │       ├── profile\
-│   │       └── theme\
-│   └── src\main\res\...
-├── backend\
-│   └── (ver sección backend)
-├── gradle\libs.versions.toml
-└── settings.gradle.kts
+app/src/main/java/com/rojas/syncpass/
+├── MainActivity.kt
+├── SyncPassApp.kt
+├── core/
+│   ├── AppContainer.kt                 # contenedor de dependencias manual
+│   ├── auth/
+│   │   ├── CognitoAuthConfig.kt        # config de Cognito (dominio, clientId)
+│   │   ├── CognitoAuthMessages.kt
+│   │   └── CognitoDirectAuthService.kt # InitiateAuth / RespondToAuthChallenge
+│   ├── config/AppConfig.kt             # baseUrl normalizada
+│   ├── network/NetworkMonitor.kt
+│   └── util/
+│       ├── Qr.kt
+│       ├── Dates.kt
+│       └── Hash.kt
+├── data/
+│   ├── local/
+│   │   ├── AppDatabase.kt
+│   │   ├── Daos.kt
+│   │   ├── DemoLocalSeeder.kt
+│   │   ├── Entities.kt
+│   │   └── Mappers.kt
+│   ├── remote/
+│   │   ├── AdminDtos.kt
+│   │   ├── ApiDtos.kt
+│   │   ├── ApiErrors.kt
+│   │   ├── AuthApiService.kt
+│   │   ├── AuthDtos.kt
+│   │   ├── CognitoExchangeRequest.kt
+│   │   ├── NetworkModule.kt
+│   │   ├── RetrofitClient.kt           # objeto duplicado, no usado por AppContainer
+│   │   └── SyncPassApiService.kt
+│   ├── repository/
+│   │   ├── AuthRepository.kt
+│   │   ├── UserAdminRepository.kt
+│   │   ├── ProjectRepository.kt
+│   │   ├── EventRepository.kt
+│   │   ├── AttendanceRepository.kt
+│   │   ├── SurveyRepository.kt
+│   │   ├── SyncRepository.kt
+│   │   ├── SessionRepository.kt
+│   │   ├── DashboardRepository.kt
+│   │   └── ReportRepository.kt
+│   ├── session/
+│   │   ├── SessionManager.kt
+│   │   └── SessionState.kt
+│   └── sync/
+│       └── SyncWorker.kt               # incluye SyncScheduler
+└── ui/
+    ├── AppRoot.kt
+    ├── components/
+    ├── login/
+    ├── dashboard/
+    ├── projects/
+    ├── events/
+    ├── scanner/
+    ├── walkin/
+    ├── survey/
+    ├── reports/
+    ├── users/
+    ├── profile/
+    └── theme/
 ```
 
 ### Backend
 
 ```
-C:\Users\milla\Documents\SyncPass\backend\
-├── src\main\java\com\rojas\syncpass\backend\
-│   ├── SyncPassBackendApplication.java
-│   ├── config\
-│   │   ├── CustomUserDetailsService.java
-│   │   ├── DemoDataSeeder.java
-│   │   ├── JwtAuthenticationFilter.java
-│   │   ├── JwtService.java
-│   │   ├── PasswordEncoderConfig.java
-│   │   └── SecurityConfig.java
-│   ├── domain\
-│   │   ├── User.java
-│   │   ├── Project.java
-│   │   ├── Event.java
-│   │   ├── Enrollment.java
-│   │   ├── Attendance.java
-│   │   ├── SurveyResponse.java
-│   │   ├── CognitoLinkRequest.java
-│   │   ├── UserCognitoLink.java
-│   │   └── enums (Role, ProjectStatus, EventStatus, EnrollmentStatus, AttendanceMethod, SyncOperationType)
-│   ├── dto\ApiDtos.java
-│   ├── repo\
-│   │   ├── UserRepository.java
-│   │   ├── ProjectRepository.java
-│   │   ├── EventRepository.java
-│   │   ├── EnrollmentRepository.java
-│   │   ├── AttendanceRepository.java
-│   │   ├── SurveyRepository.java
-│   │   ├── CognitoLinkRequestRepository.java
-│   │   └── UserCognitoLinkRepository.java
-│   ├── service\
-│   │   ├── AdminUserService.java
-│   │   ├── CognitoLinkRequestService.java
-│   │   ├── CognitoTokenValidator.java
-│   │   ├── CurrentUserService.java
-│   │   ├── DtoMapper.java
-│   │   ├── EventService.java
-│   │   ├── ProjectService.java
-│   │   ├── ReportService.java
-│   │   └── SyncService.java
-│   └── web\
-│       ├── AdminCognitoLinkRequestController.java
-│       ├── AdminUserController.java
-│       ├── AuthCognitoController.java
-│       ├── AuthController.java
-│       ├── CognitoLinkAccessController.java
-│       ├── EventController.java
-│       ├── GlobalExceptionHandler.java
-│       ├── HealthController.java
-│       ├── ProjectController.java
-│       ├── ReportController.java
-│       └── SyncController.java
-├── src\main\resources\
-│   ├── application.yml
-│   └── application-test.yml
-├── data\syncpass.mv.db
-├── data\syncpass.pre-recovery-20261030.mv.db
-└── build.gradle.kts
+backend/src/main/java/com/rojas/syncpass/backend/
+├── SyncPassBackendApplication.java
+├── config/
+│   ├── CustomUserDetailsService.java
+│   ├── DemoDataSeeder.java
+│   ├── JwtAuthenticationFilter.java
+│   ├── JwtService.java
+│   ├── PasswordEncoderConfig.java
+│   └── SecurityConfig.java
+├── domain/
+│   ├── User.java
+│   ├── Project.java
+│   ├── Event.java
+│   ├── Enrollment.java
+│   ├── Attendance.java
+│   ├── SurveyResponse.java
+│   ├── CognitoLinkRequest.java
+│   ├── UserCognitoLink.java
+│   └── enums (Role, ProjectStatus, EventStatus, EnrollmentStatus, AttendanceMethod, SyncOperationType)
+├── dto/ApiDtos.java
+├── repo/
+│   ├── UserRepository.java
+│   ├── ProjectRepository.java
+│   ├── EventRepository.java
+│   ├── EnrollmentRepository.java
+│   ├── AttendanceRepository.java
+│   ├── SurveyRepository.java
+│   ├── CognitoLinkRequestRepository.java
+│   └── UserCognitoLinkRepository.java
+├── service/
+│   ├── AdminUserService.java
+│   ├── CognitoLinkRequestService.java
+│   ├── CognitoTokenValidator.java
+│   ├── CurrentUserService.java
+│   ├── DtoMapper.java
+│   ├── EventService.java
+│   ├── ProjectService.java
+│   ├── ReportService.java
+│   └── SyncService.java
+└── web/
+    ├── AdminCognitoLinkRequestController.java
+    ├── AdminUserController.java
+    ├── AuthCognitoController.java
+    ├── AuthController.java
+    ├── CognitoLinkAccessController.java
+    ├── EventController.java
+    ├── GlobalExceptionHandler.java
+    ├── HealthController.java
+    ├── ProjectController.java
+    ├── ReportController.java
+    └── SyncController.java
 ```
 
 ### Web
 
 ```
-C:\Users\milla\OneDrive\Documents\SyncPass-Fullstack\frontend\
-├── src\
-│   ├── App.tsx
-│   ├── main.tsx
-│   ├── components\
-│   │   ├── layout\AppLayout.tsx
-│   │   └── ui\Button.tsx, Card.tsx, Input.tsx
-│   ├── config\
-│   │   ├── api.ts
-│   │   └── cognito.ts
-│   ├── context\AuthContext.tsx
-│   ├── pages\
-│   │   ├── auth\Login.tsx, Callback.tsx
-│   │   ├── dashboard\Dashboard.tsx
-│   │   ├── projects\Projects.tsx
-│   │   ├── events\Events.tsx
-│   │   ├── attendance\Attendance.tsx
-│   │   ├── surveys\Surveys.tsx
-│   │   └── reports\Reports.tsx
-│   ├── routes\
-│   │   ├── AppRouter.tsx
-│   │   └── ProtectedRoute.tsx
-│   ├── services\
-│   │   ├── api.ts
-│   │   ├── apiClient.ts
-│   │   └── authExchange.ts
-│   ├── styles\
-│   │   ├── global.css
-│   │   ├── reset.css
-│   │   └── variables.css
-│   └── utils\
-│       ├── authExchangeLock.ts
-│       └── authStorage.ts
-├── public\
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── .env.example
+src/
+├── App.tsx
+├── main.tsx
+├── config/
+│   ├── api.ts                          # comentario desactualizado; la app sí consume API
+│   └── cognito.ts
+├── context/AuthContext.tsx
+├── components/
+│   ├── layout/AppLayout.tsx
+│   └── ui/
+├── pages/
+│   ├── auth/Login.tsx, Callback.tsx
+│   ├── dashboard/Dashboard.tsx
+│   ├── projects/Projects.tsx
+│   ├── events/Events.tsx
+│   ├── attendance/Attendance.tsx
+│   ├── surveys/Surveys.tsx
+│   └── reports/Reports.tsx
+├── routes/
+│   ├── AppRouter.tsx
+│   └── ProtectedRoute.tsx
+├── services/
+│   ├── api.ts
+│   ├── apiClient.ts
+│   └── authExchange.ts
+├── styles/
+└── utils/
+    ├── authExchangeLock.ts
+    └── authStorage.ts
 ```
 
 ---
 
-## 5. Arquitectura interna de Android
+## 5. Aplicación Android
 
-### Capas
+### Patrón y capas
 
-1. **UI (Jetpack Compose)**: pantallas y ViewModels en `com.rojas.syncpass.ui.*`.
-2. **ViewModel**: gestiona el estado de la UI y delega acciones a los repositorios.
-3. **Repositorio**: orquesta fuentes locales (Room) y remotas (API).
-4. **Datos locales**: Room (`AppDatabase`, DAOs, entidades) con soporte offline.
-5. **Datos remotos**: Retrofit + OkHttp con interceptores de autenticación.
-6. **Core**: utilidades, autenticación Cognito directa, monitoreo de red y contenedor de dependencias manual (`AppContainer`).
-
-### Contenedor de dependencias
-
-`com.rojas.syncpass.core.AppContainer` crea manualmente los singletones de la app: base de datos Room, `NetworkMonitor`, `SessionManager`, `CognitoDirectAuthService`, `NetworkModule` y todos los repositorios. No se usa Hilt/Dagger.
+- **UI**: Jetpack Compose + ViewModels (`ui.*`).
+- **ViewModel**: exponen `StateFlow` y delegan a repositorios.
+- **Repositorio**: orquestan Room y la API REST.
+- **Datos locales**: Room (`AppDatabase`, DAOs, entidades).
+- **Datos remotos**: Retrofit + OkHttp con interceptor `Authorization: Bearer`.
+- **Core**: `AppContainer` inyecta dependencias manualmente. No se usa Hilt.
 
 ### Navegación
 
-`com.rojas.syncpass.ui.AppRoot.kt` define `SyncPassAppRoot`, que observa el estado de sesión (`SessionState`) y muestra:
+`AppRoot.kt` observa `SessionState` y muestra `LoginScreen` o `MainShell` con `BottomNavigation`. Rutas principales:
 
-- `SplashScreen` durante la carga.
-- `LoginScreen` si no hay sesión.
-- `MainShell` con navegación inferior (`BottomNavigation`) si hay sesión.
-
-Rutas principales: `dashboard`, `projects`, `events`, `reports` (solo coordinador), `users` (solo coordinador), `profile`, `project/{projectId}`, `event/{eventId}`, `event/{eventId}/walk-in`, `event/{eventId}/survey`, `scanner`.
+- `dashboard`, `projects`, `events`, `attendance`, `reports` (solo coordinador), `users` (solo coordinador), `profile`
+- `project/{projectId}`, `event/{eventId}`, `event/{eventId}/walk-in`, `event/{eventId}/survey`, `scanner`
 
 ### Autenticación
 
-- `LoginViewModel` recoge usuario/contraseña.
-- `AuthRepository.loginWithCognito` verifica conexión y llama a `CognitoDirectAuthService.signIn`, que realiza `InitiateAuth` contra `cognito-idp.<region>.amazonaws.com` con flujo `USER_PASSWORD_AUTH`.
-- Si Cognito responde con idToken, se intercambia en el backend mediante `POST /api/auth/cognito/exchange`.
-- Si la identidad no está vinculada, se muestra pantalla para solicitar acceso (`POST /api/auth/cognito/link-request`).
+```mermaid
+sequenceDiagram
+    actor Usuario
+    participant LoginScreen
+    participant AuthRepository
+    participant CognitoDirectAuthService
+    participant Cognito
+    participant Backend
+    participant SessionManager
+    Usuario->>LoginScreen: usuario/contraseña
+    LoginScreen->>AuthRepository: loginWithCognito
+    AuthRepository->>CognitoDirectAuthService: signIn
+    CognitoDirectAuthService->>Cognito: InitiateAuth USER_PASSWORD_AUTH
+    Cognito-->>CognitoDirectAuthService: idToken / accessToken
+    CognitoDirectAuthService-->>AuthRepository: Authenticated
+    AuthRepository->>Backend: POST /api/auth/cognito/exchange
+    Backend-->>AuthRepository: JWT propio + UserDto
+    AuthRepository->>SessionManager: save(session)
+    AuthRepository-->>LoginScreen: Success
+```
+
+- `CognitoDirectAuthService` realiza llamadas directas a `https://cognito-idp.us-east-1.amazonaws.com/`.
+- Soporta `USER_PASSWORD_AUTH` y el desafío `NEW_PASSWORD_REQUIRED`.
+- El `idToken` se intercambia por el JWT propio en `/api/auth/cognito/exchange`.
+- Si la identidad Cognito no está vinculada, la app muestra pantalla para solicitar acceso (`POST /api/auth/cognito/link-request`).
 - `SessionManager` persiste la sesión en DataStore Preferences y mantiene caché en memoria del token.
 
-### Modo offline
+### Persistencia local
 
-- Si no hay red, el login usa `localLogin` verificando `localPasswordHash` almacenado en Room.
-- Los datos descargados se guardan en Room.
-- Las operaciones de asistencia, walk-in y encuestas se guardan localmente y en `pending_operations`.
-- `SyncWorker` (WorkManager) sincroniza cada 15 minutos o al detectar conexión.
+- **Room** (`syncpass.db`, versión 2, migración aditiva 1→2).
+- Entidades: `UserEntity`, `ProjectEntity`, `EventEntity`, `EnrollmentEntity`, `AttendanceEntity`, `SurveyEntity`, `PendingOperationEntity`.
+- `DemoLocalSeeder` semilla usuarios demo para login offline si la tabla de usuarios está vacía.
 
-### Temas y colores
+### Funcionamiento offline
 
-Paleta definida en `com.rojas.syncpass.ui.theme.Color.kt`:
+| Operación | ¿Offline? | Notas |
+|---|---|---|
+| Login con Cognito | No | Requiere red. Fallback offline solo con cuenta previamente usada. |
+| Login offline | Sí | Verifica `localPasswordHash` en Room. |
+| Ver proyectos | Sí | Desde Room. |
+| Ver eventos | Sí | Desde Room. |
+| Crear proyecto | **No** | Bloqueado explícitamente en `ProjectsViewModel.create`. |
+| Editar/eliminar proyecto | No | Bloqueado explícitamente. |
+| Crear evento | No | `EventRepository.create` llama a la API. |
+| Escanear QR / walk-in | Sí | Se guardan en Room y outbox. |
+| Inscribirse / cancelar inscripción | No | Requieren red. |
+| Encuesta propia | Sí | Guardada localmente y en outbox. |
+| Encuesta asistida | Sí | Guardada localmente y en outbox. |
+| Sincronizar | No | Requiere red y sesión válida. |
 
-- `#271539` DeepPurple
-- `#501F5A` DeepPlum
-- `#915BA4` Lilac
-- `#C2649B` Mauve
-- `#E783B5` Pink
+### Outbox y sincronización
+
+- Las operaciones offline se guardan en `PendingOperationEntity` con tipo:
+  - `ATTENDANCE_QR`
+  - `ATTENDANCE_WALK_IN`
+  - `SURVEY`
+- `SyncWorker` (WorkManager) se ejecuta al detectar conexión y periódicamente cada 15 minutos.
+- Envía `POST /api/sync/batch` con las operaciones pendientes.
+- El backend responde `SYNCED`, `DUPLICATE` o `ERROR` por cada operación.
+- Android actualiza el estado local (`SYNCED`/`ERROR`) y elimina la operación exitosa.
+- Para encuestas de monitores, el contenido se redacta localmente tras confirmar la sincronización.
+
+### Control de duplicados
+
+- Índice único `clientId` en `pending_operations`.
+- Backend verifica `client_id` único en `attendances` y `survey_responses`.
+- Si una operación ya existe, el backend devuelve `DUPLICATE` y Android la elimina de la outbox.
 
 ---
 
-## 6. Arquitectura interna del frontend web
+## 6. Aplicación Web
 
 ### Capas
 
-1. **Entrada**: `src/main.tsx` configura AWS Amplify con `COGNITO_CONFIG` y monta `App`.
-2. **Rutas**: `src/routes/AppRouter.tsx` define las rutas públicas y protegidas con `ProtectedRoute`.
-3. **Autenticación**: `src/context/AuthContext.tsx` utiliza `aws-amplify/auth` (`signInWithRedirect`, `fetchAuthSession`, `signOut`).
-4. **Intercambio de token**: `src/services/authExchange.ts` envía el `idToken` de Cognito a `POST /api/auth/cognito/exchange` y guarda el JWT propio en memoria (`authStorage`).
-5. **Cliente HTTP**: `src/services/apiClient.ts` implementa `fetch` con header `Authorization: Bearer <token>`.
-6. **UI**: componentes reutilizables en `src/components/ui/` y páginas en `src/pages/`.
+1. **Entrada**: `src/main.tsx` configura AWS Amplify y monta `App`.
+2. **Rutas**: `src/routes/AppRouter.tsx` define rutas públicas y protegidas.
+3. **Autenticación**: `src/context/AuthContext.tsx` usa `aws-amplify/auth` (`signInWithRedirect`, `fetchAuthSession`, `signOut`).
+4. **Intercambio**: `src/services/authExchange.ts` envía `idToken` a `POST /api/auth/cognito/exchange`.
+5. **Cliente HTTP**: `src/services/apiClient.ts` con `fetch` y header `Authorization: Bearer`.
+6. **UI**: componentes reutilizables y páginas en `src/pages/`.
 
-### Estado actual de implementación
+### Flujo de autenticación
 
-| Área | Estado |
-|---|---|
-| Estructura de rutas y layout | Implementado |
-| Login visual + Cognito redirect | Implementado |
-| Intercambio Cognito -> JWT propio | Implementado (cliente; requiere backend activo) |
-| Cliente HTTP base | Implementado (`apiClient.ts` con `fetch`) |
-| Páginas de negocio | Implementadas y **consumen la API real** (`/api/projects`, `/api/events`, etc.) |
-| Protección de rutas | Implementada con `AuthContext`; autorización real validada por el backend |
+```mermaid
+sequenceDiagram
+    actor Usuario
+    participant Login
+    participant AuthContext
+    participant Amplify
+    participant Cognito
+    participant Callback
+    participant authExchange
+    participant Backend
+    Usuario->>Login: "Iniciar sesión con Cognito"
+    Login->>AuthContext: login()
+    AuthContext->>Amplify: signInWithRedirect
+    Amplify->>Cognito: Authorization Code + PKCE
+    Cognito-->>Amplify: code
+    Amplify-->>AuthContext: sesión Cognito
+    AuthContext->>Callback: /auth/callback
+    Callback->>Amplify: fetchAuthSession
+    Amplify-->>Callback: idToken
+    Callback->>authExchange: exchangeCognitoToken(idToken)
+    authExchange->>Backend: POST /api/auth/cognito/exchange
+    Backend-->>authExchange: JWT propio
+    authExchange->>authStorage: setSession
+```
+
+### Rutas y protección
+
+| Ruta | Protección | Observación |
+|---|---|---|
+| `/login` | Pública | Redirige a Cognito Hosted UI. |
+| `/auth/callback` | Pública | Intercambia sesión Cognito. |
+| `/dashboard` | Autenticado | |
+| `/projects` | Autenticado | Solo coordinador puede crear/editar/eliminar. |
+| `/events` | Autenticado | Solo coordinador crea eventos. |
+| `/attendance` | Autenticado | |
+| `/surveys` | Autenticado | El formulario es público para usuarios autenticados; la tabla de respuestas individuales solo se muestra a coordinadores. |
+| `/reports` | `DOCENTE_COORDINADOR` | |
+
+### Consulta de respuestas individuales
+
+La página `/surveys` ya incluye una tabla “Encuestas recibidas” que consulta `GET /api/events/{id}/surveys` y muestra:
+
+- Participante
+- Calificación general, organización e impacto
+- Recomendación
+- Comentario
+- Fecha de envío
+
+**Problema de UX conocido:** el selector de evento inicia en el primer evento de la lista (`/api/events` ordenados por `startsAt` ascendente). Si el coordinador no cambia el evento, puede ver respuestas de otro evento y pensar que faltan datos. El endpoint y el backend funcionan correctamente.
 
 ---
 
-## 7. Arquitectura interna del backend
+## 7. Backend
 
 ### Capas
 
 1. **Web**: controladores REST en `com.rojas.syncpass.backend.web`.
-2. **Seguridad**: `SecurityConfig`, `JwtAuthenticationFilter`, `JwtService`, `CustomUserDetailsService`, `PasswordEncoderConfig`.
+2. **Seguridad**: `SecurityConfig`, `JwtAuthenticationFilter`, `JwtService`, `CustomUserDetailsService`.
 3. **Servicios**: lógica de negocio en `com.rojas.syncpass.backend.service`.
 4. **Persistencia**: Spring Data JPA + entidades en `com.rojas.syncpass.backend.domain`.
-5. **Base de datos**: H2 archivo en `backend/data/syncpass`.
+5. **Base de datos**: PostgreSQL en Supabase en producción; H2 archivo en desarrollo.
 
 ### Configuración de seguridad
 
-- `SecurityConfig` habilita `@EnableMethodSecurity`, desactiva CSRF, sesiones stateless, CORS desde `app.cors.allowed-origins` y agrega `JwtAuthenticationFilter`.
+- `@EnableMethodSecurity` habilita `@PreAuthorize`.
 - Endpoints públicos: `/api/health`, `/api/auth/login`, `/api/auth/cognito/exchange`, `/api/auth/cognito/link-request`, `/h2-console/**`.
 - Cualquier otra ruta requiere autenticación.
-- `@PreAuthorize("hasRole('DOCENTE_COORDINADOR')")` protege operaciones administrativas.
+- Roles: `ROLE_DOCENTE_COORDINADOR` y `ROLE_ESTUDIANTE_VOLUNTARIO_MONITOR`.
 
----
-
-## 8. Controladores, servicios, repositorios, entidades y endpoints
-
-### Entidades principales (backend)
-
-| Entidad | Archivo | Tabla |
-|---|---|---|
-| User | `domain/User.java` | `app_users` |
-| Project | `domain/Project.java` | `projects` |
-| Event | `domain/Event.java` | `events` |
-| Enrollment | `domain/Enrollment.java` | `enrollments` |
-| Attendance | `domain/Attendance.java` | `attendance` |
-| SurveyResponse | `domain/SurveyResponse.java` | `surveys` |
-| CognitoLinkRequest | `domain/CognitoLinkRequest.java` | `cognito_link_requests` |
-| UserCognitoLink | `domain/UserCognitoLink.java` | `user_cognito_links` |
-
-### Repositorios
-
-Todos en `com.rojas.syncpass.backend.repo`. Interfaces Spring Data JPA con métodos de consulta personalizados.
-
-### Servicios principales
-
-| Servicio | Responsabilidad |
-|---|---|
-| `AdminUserService` | CRUD de usuarios internos y activación/desactivación |
-| `CognitoLinkRequestService` | Flujo de solicitudes de vínculo Cognito (crear, aprobar, rechazar) |
-| `CognitoTokenValidator` | Validación de tokens Cognito mediante JWKS |
-| `CurrentUserService` | Obtener usuario autenticado desde `SecurityContext` |
-| `EventService` | CRUD de eventos, inscripciones, asistencia QR/walk-in, encuestas |
-| `ProjectService` | CRUD de proyectos |
-| `ReportService` | Reporte de impacto agregado |
-| `SyncService` | Sincronización batch/pull para la app móvil |
-
-### Endpoints REST
+### Endpoints principales
 
 #### Auth (`/api/auth`)
 
@@ -424,7 +454,7 @@ Todos en `com.rojas.syncpass.backend.repo`. Interfaces Spring Data JPA con méto
 |---|---|---|
 | POST | `/api/auth/cognito/link-request` | Solicitar vínculo de identidad Cognito |
 
-#### Admin users (`/api/admin/users`) — solo coordinador
+#### Admin users (`/api/admin/users`) — coordinador
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -432,7 +462,7 @@ Todos en `com.rojas.syncpass.backend.repo`. Interfaces Spring Data JPA con méto
 | POST | `/api/admin/users` | Crear usuario |
 | PATCH | `/api/admin/users/{id}/active` | Activar/desactivar usuario |
 
-#### Admin Cognito link (`/api/admin/cognito-link-requests`) — solo coordinador
+#### Admin Cognito link (`/api/admin/cognito-link-requests`) — coordinador
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -491,481 +521,380 @@ Todos en `com.rojas.syncpass.backend.repo`. Interfaces Spring Data JPA con méto
 
 ---
 
-## 9. Comunicación mediante API REST
+## 8. Autenticación y autorización
 
-- Android usa Retrofit con dos interfaces: `AuthApiService` (autenticación) y `SyncPassApiService` (resto de la API).
-- Web usa `fetch` a través de `apiClient.ts`.
-- Ambos clientes envían `Authorization: Bearer <token>` donde `<token>` es el JWT propio del backend.
-- La URL base se resuelve:
-  - Android: `-PapiBaseUrl` > `.env` > `API_BASE_URL` env > default `http://192.168.1.6:8080/`.
-  - Web: `import.meta.env.VITE_API_BASE_URL` > `http://localhost:8080`.
+### Roles de negocio
 
----
-
-## 10. Métodos HTTP y formatos de intercambio
-
-- Todos los endpoints aceptan y retornan JSON (`Content-Type: application/json`).
-- Fechas se intercambian como cadenas ISO-8601 (backend `jackson.write-dates-as-timestamps: false`).
-- Android usa Gson para serialización/deserialización. Nota: los DTOs de administración (`AdminDtos.kt`) usan `String` para fechas para evitar problemas de parseo con `Instant`.
-- Respuestas de error siguen el formato `ApiError` (timestamp, status, error, message).
-
----
-
-## 11. Autenticación, autorización, roles y permisos
-
-### Roles
+Los roles residen en PostgreSQL (`app_users.role`) y son la única fuente de autorización. **No se usan grupos de Cognito para autorizar**.
 
 - `DOCENTE_COORDINADOR`
 - `ESTUDIANTE_VOLUNTARIO_MONITOR`
 
-### Flujo de autenticación
+### Flujo completo Cognito → JWT propio
 
-1. El cliente envía credenciales (login propio) o idToken Cognito al backend.
-2. El backend valida y emite un JWT propio firmado con HS256 (`JwtService`).
-3. El cliente incluye el JWT en cada petición.
-4. `JwtAuthenticationFilter` valida el JWT, carga el usuario y construye el `SecurityContext`.
-5. Los controladores usan `@PreAuthorize` para verificar roles.
+```mermaid
+sequenceDiagram
+    participant Usuario
+    participant Cliente as Android/Web
+    participant Cognito as AWS Cognito
+    participant Backend as Spring Boot
+    participant DB as PostgreSQL
+    Usuario->>Cliente: Credenciales Cognito
+    Cliente->>Cognito: Autenticación
+    Cognito-->>Cliente: idToken + sub
+    Cliente->>Backend: POST /api/auth/cognito/exchange<br/>{idToken}
+    Backend->>Cognito: Validar firma/claims (JWKS)
+    Backend->>DB: SELECT user_id FROM user_cognito_links WHERE cognito_sub = sub
+    DB-->>Backend: user_id + rol
+    Backend->>DB: SELECT * FROM app_users WHERE id = user_id
+    DB-->>Backend: usuario + rol
+    Backend-->>Cliente: JWT propio (uid, role)
+    Cliente->>Backend: API con Authorization: Bearer JWT
+    Backend->>Backend: Validar JWT y aplicar @PreAuthorize
+```
 
-### Autorización en Android
+### Vínculo Cognito ↔ usuario backend
 
-- `Session.isCoordinator` decide qué pantallas mostrar.
-- El backend siempre vuelve a validar el rol; la UI solo oculta opciones como conveniencia.
+- Tabla `user_cognito_links`: `cognito_sub` UNIQUE → `user_id` UNIQUE.
+- Tabla `cognito_link_requests`: registra solicitudes de vínculo con estados `PENDING`, `APPROVED`, `REJECTED`.
+- Coordinador crea usuario en `app_users`, luego aprueba la solicitud de vínculo, o bien se ejecuta una regularización autorizada directamente en BD.
 
-### Autorización en Web
+### Estado actual de los vínculos (regularizado)
 
-- `ProtectedRoute` verifica `authStorage.isAuthenticated()` y el rol del usuario en memoria.
-- Es una protección de UX; la autorización real está en el backend.
-
----
-
-## 12. AWS Cognito y AWS Amplify
-
-### Android
-
-- Archivo de configuración: `com.rojas.syncpass.core.auth.CognitoAuthConfig`.
-- Servicio de autenticación directa: `CognitoDirectAuthService`.
-- Realiza llamadas HTTPS a `https://cognito-idp.us-east-1.amazonaws.com/` con `X-Amz-Target`.
-- Soporta flujo `USER_PASSWORD_AUTH` y desafío `NEW_PASSWORD_REQUIRED`.
-- También existe configuración AppAuth para Hosted UI (`RedirectUriReceiverActivity` en `AndroidManifest.xml`), pero el flujo activo es el directo.
-
-### Web
-
-- Usa `aws-amplify/auth` v6.
-- Configuración en `src/config/cognito.ts` y `src/main.tsx`.
-- Flujo: `signInWithRedirect` -> callback `/auth/callback` -> `fetchAuthSession` -> `exchangeCognitoToken` -> JWT propio.
-
-### Backend
-
-- `CognitoTokenValidator` obtiene JWKS desde `app.cognito.jwks-uri`.
-- Valida firma RS256, issuer, expiración, `token_use`, `client_id`/`aud` y `sub`.
-- `AuthCognitoController.exchange` convierte un token Cognito validado en JWT propio si existe `UserCognitoLink`.
-- `CognitoLinkRequestService` gestiona aprobación/rechazo de solicitudes de vínculo.
+- Las tres cuentas de prueba/producción están vinculadas a usuarios y roles correctos.
+- `user_cognito_links` mantiene vínculos demo originales reasignados a usuarios reales.
+- No se usan credenciales legacy (`coordinador`/`[CREDENCIAL DE DEMOSTRACIÓN OMITIDA]`) en producción; se conservan solo para desarrollo local.
 
 ---
 
-## 13. Spring Security y JWT
+## 9. Usuarios y roles
 
-### Componentes
+### `DOCENTE_COORDINADOR`
 
-- `SecurityConfig`: configura la cadena de filtros, CORS, endpoints públicos y `JwtAuthenticationFilter`.
-- `JwtAuthenticationFilter`: extrae el header `Authorization: Bearer`, valida el token con `JwtService` y carga el usuario.
-- `JwtService`: genera/valida JWT con HS256; claims `uid` y `role`.
-- `CustomUserDetailsService`: carga usuario por username/email y asigna autoridad `ROLE_<rol>`.
-- `PasswordEncoderConfig`: expone `BCryptPasswordEncoder`.
+- Crea y administra proyectos y eventos.
+- Consulta participantes, inscripciones y asistencias.
+- Registra walk-ins.
+- Consulta encuestas, comentarios, resultados y reportes.
+- Aprueba/rechaza solicitudes de vínculo Cognito.
+- Crea y activa/desactiva usuarios backend.
 
-### Nota de recuperación administrativa
+### `ESTUDIANTE_VOLUNTARIO_MONITOR`
 
-Durante la recuperación se creó un runner temporal (`RecoveryCoordinatorRunner`) y un perfil `recovery` con `web-application-type: none`. Ambos fueron eliminados tras completar la operación. Quedan permanentes:
+- Consulta proyectos y eventos.
+- Se inscribe y cancela inscripción a eventos (requiere red).
+- Escanea QR de evento para registrar su propia asistencia.
+- Registra participantes no inscritos (walk-in), offline y online.
+- Encuesta asistida únicamente sobre asistencias que él registró o escaneó.
+- Trabaja offline y sincroniza después.
+- **No** crea proyectos/eventos, **no** consulta reportes, **no** ve comentarios ni respuestas individuales.
 
-- `PasswordEncoderConfig.java`
-- `@ConditionalOnWebApplication` en `SecurityConfig.java` y `AuthController.java`
+### Beneficiario / asistente
 
-Esto permite que un futuro runner no web pueda cargar el contexto de Spring sin iniciar Tomcat.
+- No inicia sesión.
+- Puede ser registrado como walk-in por un monitor.
+- Puede responder encuesta en el dispositivo del monitor.
+- Su encuesta queda ligada a la asistencia y al evento.
 
 ---
 
-## 14. Bases de datos y persistencia
+## 10. Base de datos
 
-### Backend
+### Producción
 
-- **Tecnología**: H2 Database en modo archivo.
-- **URL**: `jdbc:h2:file:./data/syncpass;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE`
-- **DDL**: `hibernate.ddl-auto: update`
-- **Consola H2**: habilitada en `/h2-console`.
-- **Archivos**: `backend/data/syncpass.mv.db`, `backend/data/syncpass.trace.db`.
-- **Backup**: `backend/data/syncpass.pre-recovery-20261030.mv.db`.
+- **PostgreSQL 17** alojado en **Supabase**.
+- Conectado desde EC2 mediante variables de entorno (`DATABASE_URL`, `DB_USER`, `DB_PASSWORD`).
+- Hibernate `ddl-auto: validate` en producción; no genera schema automáticamente.
+
+### Desarrollo
+
+- **H2** en modo archivo (`backend/data/syncpass`).
+- `ddl-auto: update`.
+- Consola H2 habilitada en `/h2-console`.
+
+### Migración H2 → PostgreSQL
+
+- Está pausada y preservada.
+- Los backups de H2 y los datos históricos se mantienen intactos.
+- No se debe ejecutar migración destructiva sin autorización expresa.
+
+### Tablas principales
+
+| Tabla | Entidad | Propósito |
+|---|---|---|
+| `app_users` | `User` | Usuarios backend, roles, credenciales |
+| `user_cognito_links` | `UserCognitoLink` | Vínculo sub Cognito ↔ usuario |
+| `cognito_link_requests` | `CognitoLinkRequest` | Solicitudes de vínculo |
+| `projects` | `Project` | Proyectos comunitarios |
+| `events` | `Event` | Eventos de proyectos |
+| `enrollments` | `Enrollment` | Inscripciones de usuarios a eventos |
+| `attendances` | `Attendance` | Asistencias registradas |
+| `survey_responses` | `SurveyResponse` | Respuestas de encuestas |
 
 ### Android local
 
-- **Tecnología**: Room sobre SQLite.
-- **Nombre**: `syncpass.db`.
-- **Entidades**: `UserEntity`, `ProjectEntity`, `EventEntity`, `EnrollmentEntity`, `AttendanceEntity`, `SurveyEntity`, `PendingOperationEntity`.
-- **Versión**: 2 con migración aditiva `MIGRATION_1_2`.
-
-### Tests del backend
-
-- Usan H2 en memoria (`jdbc:h2:mem:syncpass-test`) con perfil `test` y `ddl-auto: create-drop`.
+- **Room** sobre SQLite.
+- Tablas: `users`, `projects`, `events`, `enrollments`, `attendance`, `surveys`, `pending_operations`.
+- Versión 2 con migración aditiva.
 
 ---
 
-## 15. Room y H2, diferenciando responsabilidades
-
-| Aspecto | Room (Android) | H2 (Backend) |
-|---|---|---|
-| Ubicación | Dispositivo móvil | Servidor (actualmente máquina local) |
-| Rol | Caché local y outbox de operaciones offline | Fuente de verdad persistente |
-| Escrituras | Asistencias, walk-ins, encuestas y operaciones pendientes offline | Toda la lógica de negocio y usuarios |
-| Sincronización | `SyncWorker` envía operaciones pendientes al backend | Recibe operaciones vía `/api/sync/batch` |
-| Autenticación | Hash local para login offline | Credenciales reales y tokens JWT |
-
----
-
-## 16. Funcionamiento de los códigos QR
-
-### Generación
-
-- `com.rojas.syncpass.core.util.Qr` usa ZXing para generar bitmaps.
-- Formato del payload: `SYNCPASS|EVENT|<eventId>|<qrToken>`.
-- El backend genera `qrToken` único por evento (prefijo `SP-`).
-
-### Escaneo
-
-- Android usa CameraX + ML Kit Barcode Scanning.
-- `ScannerViewModel` / `ScannerScreen` procesan el código.
-- `Qr.parse` extrae `eventId` y `token` del formato `SYNCPASS|EVENT|...` o acepta el token crudo.
-- Se envía `POST /api/events/{id}/attendance/scan` con `{ qrCode: ... }`.
-- Si no hay red, la operación se guarda en `pending_operations` y `attendance` con `syncState = PENDING`.
-
----
-
-## 17. Flujos principales
-
-### Login Android (Cognito + JWT propio)
+## 11. Sincronización offline/online
 
 ```mermaid
 sequenceDiagram
-    actor Usuario
-    participant LoginScreen
-    participant AuthRepository
-    participant CognitoDirectAuthService
-    participant Cognito
-    participant Backend
-    participant SessionManager
-    Usuario->>LoginScreen: usuario/contraseña
-    LoginScreen->>AuthRepository: loginWithCognito
-    AuthRepository->>CognitoDirectAuthService: signIn
-    CognitoDirectAuthService->>Cognito: InitiateAuth
-    Cognito-->>CognitoDirectAuthService: idToken / accessToken
-    CognitoDirectAuthService-->>AuthRepository: Authenticated
-    AuthRepository->>Backend: POST /api/auth/cognito/exchange
-    Backend-->>AuthRepository: JWT propio + UserDto
-    AuthRepository->>SessionManager: save(session)
-    AuthRepository-->>LoginScreen: Success
-```
-
-### Login Web (Cognito Amplify + intercambio)
-
-```mermaid
-sequenceDiagram
-    actor Usuario
-    participant Login
-    participant AuthContext
-    participant Amplify
-    participant Cognito
-    participant Callback
-    participant authExchange
-    participant Backend
-    Usuario->>Login: "Iniciar sesión con Cognito"
-    Login->>AuthContext: login()
-    AuthContext->>Amplify: signInWithRedirect
-    Amplify->>Cognito: Authorization Code + PKCE
-    Cognito-->>Amplify: code
-    Amplify-->>AuthContext: sesión Cognito
-    AuthContext->>Callback: /auth/callback
-    Callback->>Amplify: fetchAuthSession
-    Amplify-->>Callback: idToken
-    Callback->>authExchange: exchangeCognitoToken(idToken)
-    authExchange->>Backend: POST /api/auth/cognito/exchange
-    Backend-->>authExchange: JWT propio
-    authExchange->>authStorage: setSession
-```
-
-### Flujo de asistencia offline Android
-
-```mermaid
-sequenceDiagram
-    participant Scanner
-    participant AttendanceRepository
+    participant Usuario
+    participant Android
     participant Room
-    participant SyncWorker
+    participant WorkManager
     participant Backend
-    Scanner->>AttendanceRepository: scan QR
-    AttendanceRepository->>Room: guardar attendance PENDING
-    AttendanceRepository->>Room: guardar pending_operation
-    Note over SyncWorker: WorkManager cada 15 min / reconexión
-    SyncWorker->>Backend: POST /api/sync/batch
-    Backend-->>SyncWorker: resultados
-    SyncWorker->>Room: marcar SYNCED / ERROR
+    participant DB
+    Usuario->>Android: Escanear QR / walk-in / encuesta
+    Android->>Room: Guardar registro local PENDING
+    Android->>Room: Insertar pending_operation
+    Note over WorkManager: Al recuperar conexión o cada 15 min
+    WorkManager->>Backend: POST /api/sync/batch
+    Backend->>DB: Insertar/validar duplicados
+    DB-->>Backend: Resultados SYNCED/DUPLICATE/ERROR
+    Backend-->>WorkManager: SyncBatchResponse
+    WorkManager->>Room: Marcar SYNCED / ERROR
+    WorkManager->>Room: Eliminar operación exitosa
 ```
 
-### Administración de usuarios y vínculos Cognito
+### Operaciones soportadas en outbox
 
-```mermaid
-sequenceDiagram
-    actor Coordinador
-    participant UsersScreen
-    participant UserAdminRepository
-    participant Backend
-    Coordinador->>UsersScreen: crear/aprobar/rechazar
-    UsersScreen->>UserAdminRepository: acción
-    UserAdminRepository->>Backend: POST/PATCH /api/admin/...
-    Backend-->>UserAdminRepository: resultado
-```
+- `ATTENDANCE_QR`
+- `ATTENDANCE_WALK_IN`
+- `SURVEY`
+
+### Idempotencia
+
+- `attendances.client_id` UNIQUE.
+- `survey_responses.client_id` UNIQUE.
+- `survey_responses.attendance_id` UNIQUE.
+- `pending_operations.client_id` UNIQUE.
+- Backend consulta existencia por `client_id` antes de insertar.
+
+### Pull
+
+- `GET /api/sync/pull` devuelve proyectos, eventos, inscripciones, asistencias y encuestas/receipts según rol.
+- Android actualiza Room con los datos descargados.
+
+### Errores
+
+- Si una operación falla, Android la marca como `ERROR`, guarda el mensaje y WorkManager reintenta con backoff exponencial.
+- Si la asistencia vinculada a una encuesta aún no existe en el servidor, `SyncService.processSurvey` devuelve `CONFLICT` y se reintenta en la siguiente sincronización.
 
 ---
 
-## 18. Variables de entorno y configuración de cada componente
+## 12. Encuestas y reportes
 
-### Android
+### Encuestas propias
 
-Archivo `app/build.gradle.kts` resuelve `API_BASE_URL` en este orden:
+- Usuario autenticado responde por sí mismo.
+- Se asocia a `user_id` y `event_id`.
+- Regla: una encuesta por evento y usuario.
 
-1. Propiedad del proyecto `-PapiBaseUrl`
-2. Archivo `.env` (`API_BASE_URL`)
-3. Variable de entorno `API_BASE_URL`
-4. Default `http://192.168.1.6:8080/`
+### Encuestas asistidas
 
-Variables adicionales:
+- Monitor aplica encuesta a una asistencia que él registró o escaneó.
+- Se asocia a `attendance_id` y `event_id`; `user_id` puede ser nulo para walk-ins.
+- Regla: una encuesta por asistencia.
+- El monitor no ve contenido después de sincronizar; solo recibo redactado.
 
-- `SYNCPASS_BUILD_DIR`: directorio de build externo (útil si el proyecto está en OneDrive).
-- `JAVA_HOME`: JDK 21 para Gradle.
+### Reportes
 
-### Backend
+- `GET /api/reports/impact` calcula métricas globales:
+  - Total proyectos, eventos, inscripciones, asistencias.
+  - Participantes únicos.
+  - Tasa de asistencia.
+  - Satisfacción promedio (`AVG(rating)`).
+  - Tasa de recomendación.
+- Los promedios se redondean a un decimal.
 
-Archivo `backend/src/main/resources/application.yml`:
+### Privacidad
 
-| Variable | Descripción |
-|---|---|
-| `SERVER_PORT` | Puerto del servidor (default 8080) |
-| `JWT_SECRET` | Secreto para firmar JWT |
-| `JWT_EXPIRATION_MS` | Expiración del token (default 7 días) |
-| `CORS_ALLOWED_ORIGINS` | Orígenes permitidos (default `*`) |
-| `SEED_DEMO_DATA` | Sembrar datos demo (default `true`) |
-| `COGNITO_ISSUER` | Issuer del User Pool Cognito |
-| `COGNITO_CLIENT_ID` | App Client ID de Cognito |
-| `COGNITO_REGION` | Región AWS |
-| `COGNITO_JWKS_URI` | Endpoint JWKS de Cognito |
-
-> No se incluyen los valores por defecto por seguridad; están definidos en `application.yml`.
-
-### Web
-
-Variables Vite (públicas, prefijo `VITE_`):
-
-| Variable | Descripción |
-|---|---|
-| `VITE_API_BASE_URL` | URL base del backend o API Gateway |
-| `VITE_AWS_REGION` | Región AWS |
-| `VITE_COGNITO_USER_POOL_ID` | ID del User Pool |
-| `VITE_COGNITO_APP_CLIENT_ID` | App Client ID web |
-| `VITE_COGNITO_DOMAIN` | Dominio Cognito Hosted UI |
-| `VITE_REDIRECT_SIGN_IN` | Callback después del login |
-| `VITE_REDIRECT_SIGN_OUT` | Callback después del logout |
-
-El archivo `.env.example` contiene valores de ejemplo.
+- Solo coordinadores consultan respuestas individuales, comentarios y reportes.
+- Backend refuerza la restricción con `@PreAuthorize("hasRole('DOCENTE_COORDINADOR')")`.
 
 ---
 
-## 19. Puertos y direcciones de conexión
+## 13. Infraestructura y despliegue
 
-| Componente | Puerto default | URL |
+### Componentes
+
+| Componente | Tecnología | Rol |
 |---|---|---|
-| Backend Spring Boot | 8080 | `http://localhost:8080` |
-| Consola H2 | 8080 | `http://localhost:8080/h2-console` |
-| Web Vite dev server | 5173 | `http://localhost:5173` |
-| Android app | N/A | Depende de la red (emulador `10.0.2.2:8080`, dispositivo físico IP LAN) |
+| Frontend web | Vercel | Sirve la SPA React y hace proxy de `/api/*` |
+| Backend | AWS EC2 | Ejecuta Spring Boot |
+| Base de datos | Supabase PostgreSQL | Persistencia de producción |
+| Autenticación | AWS Cognito | User Pool y App Clients |
+| DNS/ dominio | Vercel | `https://sync-pass.vercel.app` |
+
+### Proxy Vercel → EC2
+
+`vercel.json`:
+
+```json
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "http://<EC2_IP>/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
+```
+
+La producción web debe apuntar a `https://sync-pass.vercel.app`, que redirige las llamadas API al backend EC2.
+
+### Perfiles de ejecución backend
+
+- **Default (`application.yml`)**: H2 archivo, semilla demo activa.
+- **`prod` (`application-prod.yml`)**: PostgreSQL Supabase, `ddl-auto: validate`, semilla desactivada.
+
+### Variables de entorno por componente
+
+#### Android (`.env` en raíz)
+
+- `API_BASE_URL`
+- `COGNITO_CLIENT_ID`
+- `COGNITO_USER_POOL_DOMAIN`
+
+#### Backend (`/etc/syncpass/syncpass.env` en EC2)
+
+- `DATABASE_URL`
+- `DB_USER`
+- `DB_PASSWORD`
+- `JWT_SECRET`
+- `JWT_EXPIRATION_MS`
+- `CORS_ALLOWED_ORIGINS`
+- `COGNITO_ISSUER`
+- `COGNITO_CLIENT_IDS`
+- `COGNITO_REGION`
+- `COGNITO_JWKS_URI`
+- `SERVER_PORT`
+
+#### Web (variables Vite)
+
+- `VITE_API_BASE_URL`
+- `VITE_AWS_REGION`
+- `VITE_COGNITO_USER_POOL_ID`
+- `VITE_COGNITO_APP_CLIENT_ID`
+- `VITE_COGNITO_DOMAIN`
+- `VITE_REDIRECT_SIGN_IN`
+- `VITE_REDIRECT_SIGN_OUT`
+
+> No se incluyen valores reales por seguridad.
 
 ---
 
-## 20. Diagramas Mermaid de arquitectura y flujos
+## 14. Pruebas y validaciones realizadas
 
-### Arquitectura de componentes
+### Autenticación y roles
 
-```mermaid
-flowchart LR
-    A[Android App] -->|Retrofit + Bearer JWT| B[Spring Boot Backend]
-    W[Web React] -->|fetch + Bearer JWT| B
-    B -->|JPA| H[(H2 archivo)]
-    A -->|Room| L[(SQLite local)]
-    W -->|Amplify Auth| C[AWS Cognito]
-    A -->|Cognito IDP API| C
-    B -->|JWKS| C
-```
+- [x] Login web con Cognito para los tres perfiles regularizados.
+- [x] Login Android con Cognito para monitor.
+- [x] Intercambio de idToken por JWT propio (`/api/auth/cognito/exchange`).
+- [x] Acceso diferenciado de coordinador y monitor en Android y web.
 
-### Flujo de datos offline
+### Datos y sincronización
+
+- [x] Visualización de proyectos y eventos sin conexión (Android).
+- [x] Registro de asistencia walk-in offline.
+- [x] Sincronización posterior exitosa (`POST /api/sync/batch`).
+- [x] Inscripción de monitor a evento (requiere red).
+- [x] Encuesta offline y sincronización posterior.
+- [x] Consulta individual de respuestas en la web (`/surveys`).
+- [x] Actualización de indicadores de reportes tras sincronización.
+
+### Compilación
+
+- [x] `.​/gradlew.bat :app:assembleDebug` exitoso con configuración de producción.
+- [x] Build web exitoso (`npm run build`).
+
+### Pendiente / no verificado
+
+- [ ] Pruebas instrumentadas de UI (Compose) automatizadas.
+- [ ] Pruebas end-to-end del APK en dispositivo físico con QR impreso.
+- [ ] Validación del flujo AppAuth/Hosted UI en Android (configurado pero no activo).
+- [ ] Pruebas de carga o estrés.
+- [ ] Migración H2 → PostgreSQL (pausada).
+
+---
+
+## 15. Limitaciones conocidas
+
+1. **Creación offline de proyectos y eventos**: no está implementada. `ProjectsViewModel` y `EventRepository` bloquean escrituras sin red.
+2. **Selección de evento en `/surveys`**: la página web inicia en el evento más antiguo por `startsAt`, no en el último evento con actividad.
+3. **Comentario desactualizado en `src/config/api.ts`**: indica que no hay integración con backend, pero la aplicación web sí consume la API.
+4. **RetrofitClient.kt duplicado**: existe un segundo cliente Retrofit no utilizado por `AppContainer`.
+5. **JWT en memoria en web**: se pierde al recargar la página; requiere re-login.
+6. **H2 en desarrollo / PostgreSQL en producción**: requiere cuidado con migraciones y compatibilidad de tipos.
+7. **Dependencia de red para login Cognito Android**: el fallback offline requiere un login online previo.
+
+---
+
+## 16. Riesgos y aspectos de seguridad
+
+| Riesgo | Impacto | Mitigación actual |
+|---|---|---|
+| Secreto JWT por defecto en desarrollo | Alto | Se externaliza en producción via `JWT_SECRET` |
+| CORS `*` por defecto en desarrollo | Medio | Se restringe en producción via `CORS_ALLOWED_ORIGINS` |
+| Consola H2 habilitada | Medio | Solo en perfil default; deshabilitar en producción |
+| Token en memoria web | Medio | Re-login tras recarga; backend valida siempre |
+| Sin pruebas instrumentadas Android | Medio | Validación manual realizada |
+| Migración H2→PostgreSQL pausada | Alto | Backups preservados; sin ejecutar sin autorización |
+
+---
+
+## 17. Diagramas adicionales
+
+### Arquitectura interna de Android
 
 ```mermaid
 flowchart TD
-    A[Usuario escanea QR] --> B{¿Hay red?}
-    B -->|Sí| C[Enviar a /api/events/{id}/attendance/scan]
-    B -->|No| D[Guardar en Room attendance PENDING]
-    D --> E[Guardar pending_operation]
-    E --> F[WorkManager sincroniza al reconectar]
-    F --> C
-    C --> G[Backend persiste en H2]
+    UI[Jetpack Compose Screens] --> VM[ViewModels]
+    VM --> REPO[Repositories]
+    REPO --> ROOM[Room DAOs/Entities]
+    REPO --> API[Retrofit Services]
+    API --> OK[OkHttp + Auth Interceptor]
+    ROOM --> SW[SyncWorker/WorkManager]
+    SW --> API
+    CORE[AppContainer + Config + Utils] --> REPO
+    CORE --> AUTH[CognitoDirectAuthService]
+```
+
+### Arquitectura interna del backend
+
+```mermaid
+flowchart TD
+    CONT[Controllers] --> SERV[Services]
+    SERV --> REPO[Repositories JPA]
+    REPO --> ENT[Entities]
+    ENT --> DB[(PostgreSQL / H2)]
+    SEC[Security Config + JWT Filter] --> CONT
+    COG[CognitoTokenValidator] --> SEC
+```
+
+### Modelo de roles y autorización
+
+```mermaid
+flowchart LR
+    COG[AWS Cognito] -->|idToken| BE[Backend]
+    BE -->|sub| LINK[user_cognito_links]
+    LINK -->|user_id| USERS[app_users]
+    USERS -->|role| AUTH[Spring Security]
+    AUTH -->|@PreAuthorize| END[Endpoints]
 ```
 
 ---
 
-## 21. Instrucciones para ejecutar cada proyecto
+## 18. Ubicaciones de documentación
 
-### Backend
-
-```powershell
-cd C:\Users\milla\Documents\SyncPass\backend
-$env:JAVA_HOME="C:\Users\<usuario>\.gradle\jdks\eclipse_adoptium-21-amd64-windows.2"
-.\gradlew.bat bootRun
-```
-
-Verificar salud:
-
-```powershell
-Invoke-RestMethod http://localhost:8080/api/health
-```
-
-Tests:
-
-```powershell
-.\gradlew.bat test
-```
-
-### Android
-
-```powershell
-cd C:\Users\milla\Documents\SyncPass
-$env:JAVA_HOME="C:\Users\<usuario>\.gradle\jdks\eclipse_adoptium-21-amd64-windows.2"
-$env:SYNCPASS_BUILD_DIR="C:\Users\<usuario>\AppData\Local\Temp\opencode\syncpass-build"
-.\gradlew.bat :app:assembleDebug "-PapiBaseUrl=http://10.0.2.2:8080/"
-adb install -r "$env:SYNCPASS_BUILD_DIR\app\outputs\apk\debug\app-debug.apk"
-adb shell am start -n com.rojas.syncpass/.MainActivity
-```
-
-Tests unitarios:
-
-```powershell
-.\gradlew.bat :app:testDebugUnitTest
-```
-
-### Web
-
-```powershell
-cd C:\Users\milla\OneDrive\Documents\SyncPass-Fullstack\frontend
-npm install
-npm run dev
-```
-
-Build:
-
-```powershell
-npm run build
-```
+- Documento principal: `C:\Users\milla\Documents\SyncPass\ARQUITECTURA_COMPLETA_SYNCPASS.md`
+- Historial de cambios: `C:\Users\milla\Documents\SyncPass\HISTORIAL_COMPLETO_SYNCPASS.md`
+- README del proyecto: `C:\Users\milla\Documents\SyncPass\README.md`
+- Copia del backend (referencia): `C:\Users\milla\Documents\SyncPass\backend\ARQUITECTURA_COMPLETA_SYNCPASS.md`
 
 ---
 
-## 22. Requisitos y pasos previstos para desplegar el backend en AWS EC2
-
-1. **Infraestructura base**
-   - Crear instancia EC2 (Amazon Linux 2023 / Ubuntu 24.04 LTS).
-   - Configurar Security Group: puertos 22 (SSH), 80 (HTTP) y 443 (HTTPS).
-   - Asignar Elastic IP para dirección fija.
-
-2. **Java**
-   - Instalar JDK 21 (Amazon Corretto u OpenJDK).
-   - Verificar: `java -version`.
-
-3. **Base de datos**
-   - Decidir si se mantiene H2 archivo o se migra a PostgreSQL/MySQL/RDS.
-   - Si se mantiene H2: montar un volumen EBS persistente para `data/`.
-   - Si se migra: actualizar `application.yml` con URL, usuario y contraseña de RDS.
-
-4. **Aplicación**
-   - Copiar el JAR generado por `bootJar`.
-   - Ejecutar como servicio systemd:
-
-```ini
-# /etc/systemd/system/syncpass.service
-[Unit]
-Description=SyncPass Backend
-After=network.target
-
-[Service]
-User=syncpass
-Group=syncpass
-ExecStart=/usr/bin/java -jar /opt/syncpass/syncpass-backend-1.0.0.jar
-WorkingDirectory=/opt/syncpass
-Environment="JWT_SECRET=<secreto-largo-y-aleatorio>"
-Environment="CORS_ALLOWED_ORIGINS=https://<dominio-web>"
-Environment="SERVER_PORT=8080"
-Environment="SEED_DEMO_DATA=false"
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-5. **Proxy inverso**
-   - Instalar Nginx.
-   - Configurar proxy inverso a `http://localhost:8080`.
-   - Obtener certificado TLS con Let's Encrypt.
-
-6. **Cognito**
-   - Actualizar `COGNITO_ISSUER`, `COGNITO_CLIENT_ID` y `COGNITO_JWKS_URI` si cambian.
-   - Configurar callback URLs del App Client web hacia el dominio de producción.
-
-7. **Monitoreo**
-   - CloudWatch Logs o rotación de logs local.
-   - Alertas de salud (`/api/health`).
-
----
-
-## 23. Consideraciones de seguridad para el despliegue
-
-- **Nunca exponer** `JWT_SECRET`, credenciales de base de datos ni claves AWS.
-- Usar **HTTPS** en producción.
-- Configurar CORS con orígenes específicos; no usar `*` en producción.
-- Deshabilitar consola H2 en producción (`spring.h2.console.enabled=false`) o protegerla.
-- Cambiar `JWT_SECRET` por un valor largo y aleatorio.
-- Firmar el APK Android con una keystore de release.
-- Las variables Vite son públicas: solo colocar en ellas IDs/URLs no sensibles.
-- Validar autorización siempre en el backend; no confiar en la UI.
-- Rotar periódicamente secretos y tokens.
-
----
-
-## 24. Riesgos, dependencias y aspectos que requieren verificación
-
-| Riesgo / Dependencia | Impacto | Estado |
-|---|---|---|
-| H2 archivo en producción | Alto | Funcional para desarrollo; requiere decisión de migración a RDS/PostgreSQL |
-| Variables Cognito hardcoded en Android | Medio | Valores en `CognitoAuthConfig.kt`; deben externalizarse |
-| JWT propio con secreto por defecto | Alto | Debe cambiarse en producción |
-| Web: token en memoria | Medio | Se pierde al recargar la página; requiere re-login |
-| CORS `*` por defecto | Medio | Cambiar por orígenes específicos en producción |
-| Consola H2 habilitada | Medio | Proteger o deshabilitar en producción |
-| Ausencia de pruebas instrumentadas Android | Medio | Falta validación física de QR |
-| Dependencia de red para login Cognito Android | Medio | Fallback offline existe pero requiere login previo |
-
-### Aspectos no verificados
-
-- No se verificó la existencia real de recursos AWS (User Pool, App Client web, API Gateway) más allá de los valores presentes en el código.
-- No se verificó el despliegue en Vercel.
-- No se verificó la integración end-to-end de la app Web con el backend.
-- El flujo AppAuth/Hosted UI en Android está configurado en el manifest pero no verificado como flujo activo.
-
----
-
-**Ubicaciones de este documento:**
-
-- `C:\Users\milla\Documents\SyncPass\ARQUITECTURA_COMPLETA_SYNCPASS.md`
-- `C:\Users\milla\Documents\SyncPass\backend\ARQUITECTURA_COMPLETA_SYNCPASS.md`
-- `C:\Users\milla\OneDrive\Documents\SyncPass-Fullstack\frontend\ARQUITECTURA_COMPLETA_SYNCPASS.md`
+**Última actualización:** 2026-11-02  
+**Autoría:** Documentación técnica generada a partir de la inspección del código fuente y la configuración de producción de SyncPass.
