@@ -3,8 +3,8 @@
 > Registro maestro del proyecto. Se actualiza al finalizar cada fase.
 > No contiene contraseñas, tokens, secretos ni credenciales.
 
-**Última actualización:** 2026-10-23  
-**Estado general:** Fase 1 (backend) completada. Fases 2-4 (Room, UI, sincronización asistida) implementadas. Fase 5 (pruebas/documentación) parcial. Validación completada sin errores bloqueantes. Integración Cognito pospuesta (sin recursos AWS). Pendiente pruebas instrumentadas UI/E2E y validación manual con QR impreso.
+**Última actualización:** 2026-11-02  
+**Estado general:** Fases 1-5 completadas. Integración AWS Cognito implementada y regularizada en producción para los tres perfiles de prueba. Configuración de producción documentada (Vercel, EC2, Supabase PostgreSQL). Documentación de arquitectura actualizada. Pendiente pruebas instrumentadas UI/E2E y validación manual con QR impreso.
 
 ---
 
@@ -394,9 +394,9 @@ Flujo previsto:
 - CloudWatch.
 - IAM solo para administración de usuarios/grupos.
 
-### Estado real
+### Estado real (actualizado 2026-11-02)
 
-**AWS no está configurado. No se creó ningún recurso. Cognito no está implementado.**
+**AWS Cognito está configurado y en uso en producción.** Se crearon/recuperaron los recursos necesarios: User Pool, App Clients web y Android, dominio Hosted UI. Se completó la regularización de vínculos Cognito ↔ usuarios backend para los tres perfiles de prueba. La autenticación web y Android utiliza Cognito; el backend emite el JWT propio tras validar el token y la vinculación en `user_cognito_links`.
 
 ---
 
@@ -617,3 +617,56 @@ $env:JAVA_HOME="C:\Users\milla\.gradle\jdks\eclipse_adoptium-21-amd64-windows.2"
 - No se dispone de un historial de commits porque el proyecto no está confirmado como repositorio Git en esta sesión.
 - Las fechas exactas de conversaciones anteriores no están confirmadas; se registra la fecha de esta actualización.
 - No se han ejecutado pruebas instrumentadas de UI.
+
+---
+
+## 16. Fase de regularización Cognito, configuración de producción y actualización documental (2026-11-02)
+
+### Objetivo
+
+Poner en producción la autenticación con AWS Cognito, regularizar los vínculos de los tres perfiles de prueba, documentar la arquitectura real del sistema y dejar el proyecto preparado para mantenimiento futuro.
+
+### Cambios realizados
+
+- **Regularización Cognito:**
+  - Se identificaron los `cognito_sub` de los tres perfiles de prueba.
+  - Se crearon los usuarios backend faltantes mediante el endpoint oficial `POST /api/admin/users`.
+  - Se reasignaron los vínculos `user_cognito_links` para que cada `sub` apunte al `user_id` y rol correctos.
+  - Se registraron las solicitudes de vínculo correspondientes en `cognito_link_requests` con estado `APPROVED`.
+  - Se preservaron los usuarios demo y sus datos históricos.
+
+- **Configuración de producción Android:**
+  - Se creó `.env` en la raíz del proyecto Gradle con `API_BASE_URL`, `COGNITO_CLIENT_ID` y `COGNITO_USER_POOL_DOMAIN`.
+  - `.gitignore` ya protegía `.env`.
+  - Se verificó que el App Client Android es público y permite `USER_PASSWORD_AUTH`.
+  - Se compiló exitosamente `:app:assembleDebug` con los valores de producción.
+
+- **Diagnóstico y validación:**
+  - Se verificó conectividad con EC2, Vercel y Supabase PostgreSQL.
+  - Se instaló `postgresql-client-17` en EC2 para coincidir con la versión del servidor.
+  - Se generó respaldo persistente de `app_users`, `user_cognito_links` y `cognito_link_requests`.
+  - Se ejecutó la regularización en una transacción con validaciones previas y posteriores; se confirmó con `COMMIT`.
+  - Se probó login web y Android con los tres perfiles.
+  - Se validó flujo de encuesta offline: registro local, sincronización, persistencia en `survey_responses` e inclusión en reportes.
+  - Se diagnosticó que la web ya dispone de consulta individual de respuestas en `/surveys`; la causa de respuestas no visibles fue la selección inicial de evento.
+
+- **Documentación:**
+  - Se actualizó integralmente `ARQUITECTURA_COMPLETA_SYNCPASS.md` con el estado real de arquitectura, tecnologías, autenticación, base de datos, sincronización, infraestructura, pruebas y diagramas.
+  - Se actualizó `README.md` para reflejar Cognito, PostgreSQL en producción, web en Vercel, proxy a EC2 y las funcionalidades actuales.
+  - Se consolidó `backend/ARQUITECTURA_COMPLETA_SYNCPASS.md` como referencia al documento raíz.
+  - Se actualizó este `HISTORIAL_COMPLETO_SYNCPASS.md` con la nueva fase.
+
+### Estado resultante
+
+- Autenticación Cognito operativa en web y Android.
+- Backend en EC2 conectado a Supabase PostgreSQL.
+- Web en Vercel con proxy `/api/*` a EC2.
+- Tres perfiles regularizados con roles correctos.
+- Documentación de arquitectura alineada con el código.
+
+### Pendiente
+
+- Pruebas instrumentadas de UI / end-to-end.
+- Validación con QR impreso en dispositivo físico.
+- Migración H2 → PostgreSQL (pausada; datos H2 intactos).
+- Resolver UX de selección inicial de evento en `/surveys`.

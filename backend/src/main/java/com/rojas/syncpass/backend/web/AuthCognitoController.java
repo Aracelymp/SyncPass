@@ -10,13 +10,22 @@ import com.rojas.syncpass.backend.repo.UserRepository;
 import com.rojas.syncpass.backend.service.CognitoTokenValidator;
 import com.nimbusds.jwt.JWTClaimsSet;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthCognitoController {
+
+    private static final Logger LOG =
+            LoggerFactory.getLogger(AuthCognitoController.class);
 
     private final CognitoTokenValidator cognitoTokenValidator;
     private final UserCognitoLinkRepository userCognitoLinkRepository;
@@ -77,19 +86,46 @@ public class AuthCognitoController {
             );
         }
 
+        String subHash = sha256Prefix(sub);
+
+        LOG.info("Token Cognito validado. subHash={}", subHash);
+
         var link = userCognitoLinkRepository.findByCognitoSub(sub)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.FORBIDDEN,
-                        "Identidad Cognito no vinculada"
-                ));
+                .orElseThrow(() -> {
+                    LOG.warn(
+                            "Cognito exchange rechazado: identidad no vinculada. subHash={}",
+                            subHash
+                    );
+                    return new ResponseStatusException(
+                            HttpStatus.FORBIDDEN,
+                            "Identidad Cognito no vinculada"
+                    );
+                });
+
+        LOG.info(
+                "Token Cognito validado y vinculacion encontrada. linkId={}, userId={}",
+                link.getId(),
+                link.getUser().getId()
+        );
 
         User user = userRepository.findById(link.getUser().getId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.FORBIDDEN,
-                        "Usuario no autorizado"
-                ));
+                .orElseThrow(() -> {
+                    LOG.warn(
+                            "Cognito exchange rechazado: usuario no encontrado. linkId={}, userId={}",
+                            link.getId(),
+                            link.getUser().getId()
+                    );
+                    return new ResponseStatusException(
+                            HttpStatus.FORBIDDEN,
+                            "Usuario no autorizado"
+                    );
+                });
 
         if (!user.isActive()) {
+            LOG.warn(
+                    "Cognito exchange rechazado: usuario inactivo. userId={}",
+                    user.getId()
+            );
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
                     "Usuario no autorizado"
@@ -110,6 +146,16 @@ public class AuthCognitoController {
                 jwtService.getExpirationSeconds(),
                 toDto(user)
         );
+    }
+
+    private String sha256Prefix(String value) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash).substring(0, 16);
+        } catch (Exception ex) {
+            return "unknown";
+        }
     }
 
     private ApiDtos.UserDto toDto(User user) {

@@ -47,8 +47,12 @@ export const Login: React.FC = () => {
     }
     try {
       await login();
-    } catch {
-      setLocalError('No se pudo iniciar el flujo de autenticación con Cognito.');
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo iniciar el flujo de autenticación con Cognito.';
+      setLocalError(message);
     }
   };
 
